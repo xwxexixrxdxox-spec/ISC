@@ -217,15 +217,14 @@ async function submitChange(direction) {
 
   showStatus(resultDiv, 'Saving...', 'info');
   try {
-    const res = await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'text/plain' }, // avoids CORS preflight with Apps Script
-      body: JSON.stringify({
-        barcode, description,
-        qtyChange: direction === 'add' ? qty : -qty,
-        timestamp: new Date().toISOString()
-      })
+    const qtyChange = direction === 'add' ? qty : -qty;
+    const params = new URLSearchParams({
+      action: 'update',
+      barcode, description,
+      qtyChange: String(qtyChange),
+      timestamp: new Date().toISOString()
     });
+    const res = await fetch(`${url}?${params.toString()}`, { method: 'GET' });
     const data = await res.json();
     if (data.ok) {
       showStatus(resultDiv, `Saved. New stock level: ${data.newQty}`, 'ok');
