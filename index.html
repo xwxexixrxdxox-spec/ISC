@@ -108,7 +108,7 @@
     <label style="margin-top:10px;">Google Apps Script Web App URL</label>
     <input id="scriptUrl" placeholder="https://script.google.com/macros/s/.../exec">
     <button class="btn-secondary" id="saveUrlBtn">Save URL</button>
-    <p style="margin-top:8px;">This connects the app to your live Google Sheet. See the setup guide for the exact code to deploy — it takes about 10 minutes, one time only.</p>
+    <p style="margin-top:8px;">This connects the app to your live Google Sheet.</p>
   </details>
 </div>
 
@@ -123,7 +123,6 @@ const resultDiv = document.getElementById('result');
 const cameraStatus = document.getElementById('cameraStatus');
 const scriptUrlInput = document.getElementById('scriptUrl');
 
-// Load saved script URL
 scriptUrlInput.value = localStorage.getItem('scriptUrl') || '';
 document.getElementById('saveUrlBtn').addEventListener('click', () => {
   localStorage.setItem('scriptUrl', scriptUrlInput.value.trim());
@@ -131,7 +130,7 @@ document.getElementById('saveUrlBtn').addEventListener('click', () => {
 });
 
 function showStatus(el, msg, type) {
-  el.innerHTML = `<div class="status ${type}">${msg}</div>`;
+  el.innerHTML = '<div class="status ' + type + '">' + msg + '</div>';
 }
 
 let stream = null;
@@ -140,7 +139,7 @@ let detector = null;
 
 async function startScan() {
   if (!('BarcodeDetector' in window)) {
-    showStatus(cameraStatus, 'Your browser doesn\'t support live barcode scanning (try Chrome on Android). You can still type the barcode manually below.', 'err');
+    showStatus(cameraStatus, 'Your browser does not support live barcode scanning (try Chrome on Android). You can still type the barcode manually below.', 'err');
     return;
   }
   try {
@@ -169,7 +168,8 @@ async function scanLoop() {
       const code = codes[0].rawValue;
       barcodeInput.value = code;
       stopScan();
-      showStatus(cameraStatus, `Scanned: ${code}. Looking up...`, 'info');
+      scanBtn.textContent = '📷 Scan Barcode';
+      showStatus(cameraStatus, 'Scanned: ' + code + '. Looking up...', 'info');
       lookupBarcode(code);
       return;
     }
@@ -183,10 +183,8 @@ scanBtn.addEventListener('click', () => {
 });
 
 async function lookupBarcode(code) {
-  // Free public lookup via Open Food Facts (broad coverage, free, no key required).
-  // For non-food items this will often miss — that's expected and handled below.
   try {
-    const res = await fetch(`https://world.openfoodfacts.org/api/v2/product/${code}.json`);
+    const res = await fetch('https://world.openfoodfacts.org/api/v2/product/' + code + '.json');
     const data = await res.json();
     if (data.status === 1 && data.product) {
       const name = data.product.product_name || data.product.generic_name || '';
@@ -196,7 +194,7 @@ async function lookupBarcode(code) {
         return;
       }
     }
-    showStatus(cameraStatus, 'No public match found — type the description, it\'ll be saved for next time.', 'info');
+    showStatus(cameraStatus, 'No public match found — type the description, it will be saved for next time.', 'info');
   } catch (e) {
     showStatus(cameraStatus, 'Lookup failed (offline or blocked). Type the description manually.', 'err');
   }
@@ -215,24 +213,26 @@ async function submitChange(direction) {
   if (!barcode) { showStatus(resultDiv, 'Enter or scan a barcode first.', 'err'); return; }
   if (!url) { showStatus(resultDiv, 'Set your Google Sheet URL in Settings first.', 'err'); return; }
 
-  showStatus(resultDiv, 'Saving...', 'info');
+  showStatus(resultDiv, 'Sending to sheet...', 'info');
   try {
     const qtyChange = direction === 'add' ? qty : -qty;
     const params = new URLSearchParams({
       action: 'update',
-      barcode, description,
+      barcode: barcode,
+      description: description,
       qtyChange: String(qtyChange),
       timestamp: new Date().toISOString()
     });
-    const res = await fetch(`${url}?${params.toString()}`, { method: 'GET' });
-    const data = await res.json();
-    if (data.ok) {
-      showStatus(resultDiv, `Saved. New stock level: ${data.newQty}`, 'ok');
-    } else {
-      showStatus(resultDiv, 'Saved with a warning: ' + (data.error || 'unknown'), 'err');
-    }
+    const fullUrl = url + '?' + params.toString();
+
+    // Use no-cors to bypass the browser CORS block on script.google.com.
+    // The request goes through to Google; we just cannot read the response.
+    // The sheet will update — check it directly to confirm after tapping.
+    await fetch(fullUrl, { method: 'GET', mode: 'no-cors' });
+
+    showStatus(resultDiv, (direction === 'add' ? '✅ +' : '✅ -') + qty + ' sent! Open Google Sheets to confirm the update.', 'ok');
   } catch (e) {
-    showStatus(resultDiv, 'Could not reach the sheet. Check your URL and connection.', 'err');
+    showStatus(resultDiv, 'Request failed: ' + e.message, 'err');
   }
 }
 
