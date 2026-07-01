@@ -1,0 +1,254 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Inventory Scanner</title>
+<link rel="manifest" href="./manifest.json">
+<meta name="theme-color" content="#22c55e">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="InvScanner">
+<style>
+  :root {
+    --bg: #0f172a;
+    --card: #1e293b;
+    --accent: #22c55e;
+    --accent-down: #ef4444;
+    --text: #f1f5f9;
+    --muted: #94a3b8;
+    --border: #334155;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    padding: 16px;
+  }
+  h1 { font-size: 1.3rem; margin: 0 0 4px; }
+  .sub { color: var(--muted); font-size: 0.85rem; margin-bottom: 16px; }
+  .card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 16px;
+    margin-bottom: 14px;
+  }
+  label { display: block; font-size: 0.8rem; color: var(--muted); margin-bottom: 6px; }
+  input, select {
+    width: 100%;
+    padding: 10px;
+    background: #0f172a;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    color: var(--text);
+    font-size: 1rem;
+    margin-bottom: 12px;
+  }
+  button {
+    width: 100%;
+    padding: 13px;
+    border: none;
+    border-radius: 8px;
+    font-size: 1rem;
+    font-weight: 600;
+    cursor: pointer;
+    margin-bottom: 8px;
+  }
+  .btn-scan { background: #3b82f6; color: white; }
+  .btn-add { background: var(--accent); color: #052e16; }
+  .btn-sub { background: var(--accent-down); color: #450a0a; }
+  .btn-secondary { background: #334155; color: var(--text); }
+  #video-wrap { display: none; position: relative; border-radius: 10px; overflow: hidden; margin-bottom: 12px; }
+  video { width: 100%; display: block; }
+  #scan-overlay {
+    position: absolute; top: 50%; left: 10%; right: 10%; height: 2px;
+    background: var(--accent); box-shadow: 0 0 8px var(--accent);
+  }
+  .row { display: flex; gap: 8px; }
+  .row button { flex: 1; }
+  .status { font-size: 0.8rem; padding: 8px 10px; border-radius: 6px; margin-bottom: 10px; }
+  .status.ok { background: rgba(34,197,94,0.15); color: var(--accent); }
+  .status.err { background: rgba(239,68,68,0.15); color: var(--accent-down); }
+  .status.info { background: rgba(59,130,246,0.15); color: #93c5fd; }
+  details { color: var(--muted); font-size: 0.8rem; }
+  summary { cursor: pointer; padding: 4px 0; }
+</style>
+</head>
+<body>
+
+<h1>📦 Inventory Scanner</h1>
+<div class="sub">Scan a barcode, look up the item, adjust stock.</div>
+
+<div class="card">
+  <div id="video-wrap">
+    <video id="video" playsinline autoplay muted></video>
+    <div id="scan-overlay"></div>
+  </div>
+  <button class="btn-scan" id="scanBtn">📷 Scan Barcode</button>
+  <div id="cameraStatus"></div>
+
+  <label for="barcode">Barcode</label>
+  <input id="barcode" placeholder="Scan or type manually" inputmode="numeric">
+
+  <label for="description">Item Description</label>
+  <input id="description" placeholder="Auto-fills from lookup, or type your own">
+
+  <label for="qty">Quantity to Add/Subtract</label>
+  <input id="qty" type="number" value="1" min="1">
+
+  <div class="row">
+    <button class="btn-add" id="addBtn">+ Add Stock</button>
+    <button class="btn-sub" id="subBtn">− Remove Stock</button>
+  </div>
+  <div id="result"></div>
+</div>
+
+<div class="card">
+  <details>
+    <summary>⚙️ Settings (set this up once)</summary>
+    <label style="margin-top:10px;">Google Apps Script Web App URL</label>
+    <input id="scriptUrl" placeholder="https://script.google.com/macros/s/.../exec">
+    <button class="btn-secondary" id="saveUrlBtn">Save URL</button>
+    <p style="margin-top:8px;">This connects the app to your live Google Sheet.</p>
+  </details>
+</div>
+
+<script>
+const video = document.getElementById('video');
+const videoWrap = document.getElementById('video-wrap');
+const scanBtn = document.getElementById('scanBtn');
+const barcodeInput = document.getElementById('barcode');
+const descInput = document.getElementById('description');
+const qtyInput = document.getElementById('qty');
+const resultDiv = document.getElementById('result');
+const cameraStatus = document.getElementById('cameraStatus');
+const scriptUrlInput = document.getElementById('scriptUrl');
+
+scriptUrlInput.value = localStorage.getItem('scriptUrl') || '';
+document.getElementById('saveUrlBtn').addEventListener('click', () => {
+  localStorage.setItem('scriptUrl', scriptUrlInput.value.trim());
+  showStatus(cameraStatus, 'Saved.', 'ok');
+});
+
+function showStatus(el, msg, type) {
+  el.innerHTML = '<div class="status ' + type + '">' + msg + '</div>';
+}
+
+let stream = null;
+let scanning = false;
+let detector = null;
+
+async function startScan() {
+  if (!('BarcodeDetector' in window)) {
+    showStatus(cameraStatus, 'Your browser does not support live barcode scanning (try Chrome on Android). You can still type the barcode manually below.', 'err');
+    return;
+  }
+  try {
+    detector = new BarcodeDetector({ formats: ['ean_13','ean_8','upc_a','upc_e','code_128'] });
+    stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
+    video.srcObject = stream;
+    videoWrap.style.display = 'block';
+    scanning = true;
+    requestAnimationFrame(scanLoop);
+  } catch (e) {
+    showStatus(cameraStatus, 'Camera access failed: ' + e.message, 'err');
+  }
+}
+
+function stopScan() {
+  scanning = false;
+  if (stream) stream.getTracks().forEach(t => t.stop());
+  videoWrap.style.display = 'none';
+}
+
+async function scanLoop() {
+  if (!scanning) return;
+  try {
+    const codes = await detector.detect(video);
+    if (codes.length > 0) {
+      const code = codes[0].rawValue;
+      barcodeInput.value = code;
+      stopScan();
+      scanBtn.textContent = '📷 Scan Barcode';
+      showStatus(cameraStatus, 'Scanned: ' + code + '. Looking up...', 'info');
+      lookupBarcode(code);
+      return;
+    }
+  } catch (e) { /* keep trying */ }
+  requestAnimationFrame(scanLoop);
+}
+
+scanBtn.addEventListener('click', () => {
+  if (scanning) { stopScan(); scanBtn.textContent = '📷 Scan Barcode'; }
+  else { startScan(); scanBtn.textContent = '⏹ Stop Scanning'; }
+});
+
+async function lookupBarcode(code) {
+  try {
+    const res = await fetch('https://world.openfoodfacts.org/api/v2/product/' + code + '.json');
+    const data = await res.json();
+    if (data.status === 1 && data.product) {
+      const name = data.product.product_name || data.product.generic_name || '';
+      if (name) {
+        descInput.value = name;
+        showStatus(cameraStatus, 'Found a public match. Review before saving.', 'ok');
+        return;
+      }
+    }
+    showStatus(cameraStatus, 'No public match found — type the description, it will be saved for next time.', 'info');
+  } catch (e) {
+    showStatus(cameraStatus, 'Lookup failed (offline or blocked). Type the description manually.', 'err');
+  }
+}
+
+barcodeInput.addEventListener('change', () => {
+  if (barcodeInput.value.trim()) lookupBarcode(barcodeInput.value.trim());
+});
+
+async function submitChange(direction) {
+  const url = localStorage.getItem('scriptUrl');
+  const barcode = barcodeInput.value.trim();
+  const description = descInput.value.trim();
+  const qty = parseInt(qtyInput.value, 10) || 0;
+
+  if (!barcode) { showStatus(resultDiv, 'Enter or scan a barcode first.', 'err'); return; }
+  if (!url) { showStatus(resultDiv, 'Set your Google Sheet URL in Settings first.', 'err'); return; }
+
+  showStatus(resultDiv, 'Sending to sheet...', 'info');
+  try {
+    const qtyChange = direction === 'add' ? qty : -qty;
+    const params = new URLSearchParams({
+      action: 'update',
+      barcode: barcode,
+      description: description,
+      qtyChange: String(qtyChange),
+      timestamp: new Date().toISOString()
+    });
+    const fullUrl = url + '?' + params.toString();
+
+    // Use no-cors to bypass the browser CORS block on script.google.com.
+    // The request goes through to Google; we just cannot read the response.
+    // The sheet will update — check it directly to confirm after tapping.
+    await fetch(fullUrl, { method: 'GET', mode: 'no-cors' });
+
+    showStatus(resultDiv, (direction === 'add' ? '✅ +' : '✅ -') + qty + ' sent! Open Google Sheets to confirm the update.', 'ok');
+  } catch (e) {
+    showStatus(resultDiv, 'Request failed: ' + e.message, 'err');
+  }
+}
+
+document.getElementById('addBtn').addEventListener('click', () => submitChange('add'));
+document.getElementById('subBtn').addEventListener('click', () => submitChange('subtract'));
+</script>
+<script>
+if ("serviceWorker" in navigator) {
+  navigator.serviceWorker.register("./service-worker.js")
+    .catch(err => console.log("SW registration failed:", err));
+}
+</script>
+</body>
+</html>
