@@ -2,12 +2,16 @@
   "name": "Inventory Scanner",
   "short_name": "InvScanner",
   "description": "Scan barcodes to track inventory in real time. Updates sync live to Google Sheets.",
-  "start_url": "/",
+  "start_url": "/ISC/",
   "display": "standalone",
   "orientation": "portrait",
   "background_color": "#0f172a",
   "theme_color": "#22c55e",
-  "categories": ["business", "productivity", "utilities"],
+  "categories": [
+    "business",
+    "productivity",
+    "utilities"
+  ],
   "icons": [
     {
       "src": "icons/icon-192.png",
@@ -30,5 +34,6 @@
       "description": "Open the scanner directly",
       "url": "/?action=scan"
     }
-  ]
+  ],
+  "scope": "/ISC/"
 }

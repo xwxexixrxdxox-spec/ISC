@@ -4,9 +4,9 @@
 
 const CACHE_NAME = 'inventory-scanner-v1';
 const ASSETS = [
-  '/',
-  '/index.html',
-  '/manifest.json'
+  '/ISC/',
+  '/ISC/index.html',
+  '/ISC/manifest.json'
 ];
 
 // Install: cache the app shell
