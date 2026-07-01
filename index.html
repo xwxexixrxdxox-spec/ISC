@@ -4,6 +4,11 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Inventory Scanner</title>
+<link rel="manifest" href="./manifest.json">
+<meta name="theme-color" content="#22c55e">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="InvScanner">
 <style>
   :root {
     --bg: #0f172a;
@@ -238,6 +243,12 @@ async function submitChange(direction) {
 
 document.getElementById('addBtn').addEventListener('click', () => submitChange('add'));
 document.getElementById('subBtn').addEventListener('click', () => submitChange('subtract'));
+</script>
+<script>
+if ("serviceWorker" in navigator) {
+  navigator.serviceWorker.register("./service-worker.js")
+    .catch(err => console.log("SW registration failed:", err));
+}
 </script>
 </body>
 </html>
