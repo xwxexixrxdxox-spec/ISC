@@ -54,7 +54,7 @@
       "short_name": "Scan",
       "description": "Open the scanner directly",
       "url": "/ISC/?action=scan",
-      "icons": [{ "src": "./icons/icon-192.png", "sizes": "192x192" }]
+      "icons": [{ "src": "./Icons/icon-192.png", "sizes": "192x192" }]
     }
   ],
   "protocol_handlers": [],
