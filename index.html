@@ -372,12 +372,14 @@ async function createSheet() {
     }]
   });
   const spreadsheetId = res.spreadsheetId;
+  // Read the actual sheetId from the response — never assume it's 0
+  const sheetId = res.sheets[0].properties.sheetId;
   await gapi('https://sheets.googleapis.com/v4/spreadsheets/' + spreadsheetId + ':batchUpdate', 'POST', {
     requests: [
       {
         // Barcode column (A) as plain text — preserves leading zeros
         repeatCell: {
-          range: { sheetId: 0, startRowIndex: 1, startColumnIndex: 0, endColumnIndex: 1 },
+          range: { sheetId: sheetId, startRowIndex: 1, startColumnIndex: 0, endColumnIndex: 1 },
           cell: { userEnteredFormat: { numberFormat: { type: 'TEXT' } } },
           fields: 'userEnteredFormat.numberFormat'
         }
@@ -385,7 +387,7 @@ async function createSheet() {
       {
         // Price column (E) as currency
         repeatCell: {
-          range: { sheetId: 0, startRowIndex: 1, startColumnIndex: 4, endColumnIndex: 5 },
+          range: { sheetId: sheetId, startRowIndex: 1, startColumnIndex: 4, endColumnIndex: 5 },
           cell: { userEnteredFormat: { numberFormat: { type: 'CURRENCY', pattern: '"$"#,##0.00' } } },
           fields: 'userEnteredFormat.numberFormat'
         }
