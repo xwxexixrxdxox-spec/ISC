@@ -3,37 +3,60 @@
   "short_name": "InvScanner",
   "description": "Scan barcodes to track inventory in real time. Updates sync live to Google Sheets.",
   "start_url": "/ISC/",
+  "scope": "/ISC/",
   "display": "standalone",
   "orientation": "portrait",
   "background_color": "#0f172a",
   "theme_color": "#22c55e",
-  "categories": [
-    "business",
-    "productivity",
-    "utilities"
-  ],
+  "lang": "en",
+  "dir": "ltr",
+  "categories": ["business", "productivity", "utilities"],
+  "iarc_rating_id": "",
+  "prefer_related_applications": false,
   "icons": [
     {
-      "src": "Icons/icon-192.png",
+      "src": "./Icons/icon-192.png",
       "sizes": "192x192",
       "type": "image/png",
-      "purpose": "any maskable"
+      "purpose": "any"
     },
     {
-      "src": "Icons/icon-512.png",
+      "src": "./Icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "maskable"
+    },
+    {
+      "src": "./Icons/icon-512.png",
       "sizes": "512x512",
       "type": "image/png",
-      "purpose": "any maskable"
+      "purpose": "any"
+    },
+    {
+      "src": "./Icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
     }
   ],
-  "screenshots": [],
+  "screenshots": [
+    {
+      "src": "./Icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "form_factor": "narrow",
+      "label": "Inventory Scanner home screen"
+    }
+  ],
   "shortcuts": [
     {
       "name": "Scan Barcode",
       "short_name": "Scan",
       "description": "Open the scanner directly",
-      "url": "/?action=scan"
+      "url": "/ISC/?action=scan",
+      "icons": [{ "src": "./icons/icon-192.png", "sizes": "192x192" }]
     }
   ],
-  "scope": "/ISC/"
+  "protocol_handlers": [],
+  "display_override": ["standalone", "minimal-ui"]
 }
