@@ -2,7 +2,7 @@
 // Caches the app shell so it loads offline.
 // Stock updates still require a connection to reach Google Sheets.
 
-const CACHE_NAME = 'inventory-scanner-v2';
+const CACHE_NAME = 'inventory-scanner-v3';
 const ASSETS = [
   '/ISC/',
   '/ISC/index.html',
