@@ -197,6 +197,28 @@
 </div>
 
 <script>
+// ─── Service Worker Self-Healer ──────────────────────────────────────────────
+// Runs once per session. If a stale SW is found serving old content,
+// unregisters it and reloads so the browser fetches fresh HTML from network.
+(function() {
+  if (!('serviceWorker' in navigator)) return;
+  var CURRENT = 'inventory-scanner-v4';
+  var cleared = sessionStorage.getItem('sw-cleared');
+  if (cleared === CURRENT) return; // Already ran this session
+  sessionStorage.setItem('sw-cleared', CURRENT);
+  navigator.serviceWorker.getRegistrations().then(function(regs) {
+    var stale = regs.filter(function(r) {
+      var sw = r.active || r.installing || r.waiting;
+      return sw && !sw.scriptURL.includes('v4');
+    });
+    if (stale.length > 0) {
+      console.log('[SW] Clearing', stale.length, 'stale service worker(s) and reloading...');
+      Promise.all(stale.map(function(r) { return r.unregister(); }))
+        .then(function() { window.location.reload(true); });
+    }
+  });
+})();
+
 // ─── State ───────────────────────────────────────────────────────────────────
 const S = {
   clientId: localStorage.getItem('gClientId') || '',
