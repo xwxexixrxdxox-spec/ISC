@@ -259,6 +259,46 @@ function requestToken(callback) {
 }
 
 // ─── Full Setup Flow ──────────────────────────────────────────────────────────
+async function applySheetFormatting(spreadsheetId, token) {
+  try {
+    // Fetch the real sheetId from the spreadsheet properties
+    const meta = await fetch(
+      'https://sheets.googleapis.com/v4/spreadsheets/' + spreadsheetId + '?fields=sheets.properties',
+      { headers: { 'Authorization': 'Bearer ' + token } }
+    ).then(r => r.json());
+    const sheetId = meta.sheets[0].properties.sheetId;
+
+    await fetch(
+      'https://sheets.googleapis.com/v4/spreadsheets/' + spreadsheetId + ':batchUpdate',
+      {
+        method: 'POST',
+        headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          requests: [
+            {
+              repeatCell: {
+                range: { sheetId: sheetId, startRowIndex: 1, startColumnIndex: 0, endColumnIndex: 1 },
+                cell: { userEnteredFormat: { numberFormat: { type: 'TEXT' } } },
+                fields: 'userEnteredFormat.numberFormat'
+              }
+            },
+            {
+              repeatCell: {
+                range: { sheetId: sheetId, startRowIndex: 1, startColumnIndex: 4, endColumnIndex: 5 },
+                cell: { userEnteredFormat: { numberFormat: { type: 'CURRENCY', pattern: '"$"#,##0.00' } } },
+                fields: 'userEnteredFormat.numberFormat'
+              }
+            }
+          ]
+        })
+      }
+    );
+    console.log('[Formatting] Column formats applied successfully');
+  } catch (e) {
+    console.warn('[Formatting] Skipped (cosmetic only):', e.message);
+  }
+}
+
 async function runFullSetup() {
   show('screen-setup');
   try {
@@ -297,6 +337,10 @@ async function runFullSetup() {
     log('All done!', 100);
     logLine('✓ Everything connected');
     setStatus('setupStatus', '🎉 Your inventory system is ready!', 'ok');
+
+    // Apply column formatting after a 3 second delay — purely cosmetic,
+    // runs in background and never blocks or crashes setup
+    setTimeout(() => applySheetFormatting(sheetId, S.accessToken), 3000);
 
     setTimeout(() => { show('screen-main'); initMain(); }, 1500);
 
@@ -372,45 +416,9 @@ async function createSheet() {
     }]
   });
   const spreadsheetId = res.spreadsheetId;
-  // Read the actual sheetId from the response — never assume it's 0
   const sheetId = res.sheets[0].properties.sheetId;
-
-  // Apply column formatting — retry once after a delay in case the API
-  // hasn't fully committed the new sheet yet (common race condition)
-  const applyFormatting = async () => {
-    await gapi('https://sheets.googleapis.com/v4/spreadsheets/' + spreadsheetId + ':batchUpdate', 'POST', {
-      requests: [
-        {
-          repeatCell: {
-            range: { sheetId: sheetId, startRowIndex: 1, startColumnIndex: 0, endColumnIndex: 1 },
-            cell: { userEnteredFormat: { numberFormat: { type: 'TEXT' } } },
-            fields: 'userEnteredFormat.numberFormat'
-          }
-        },
-        {
-          repeatCell: {
-            range: { sheetId: sheetId, startRowIndex: 1, startColumnIndex: 4, endColumnIndex: 5 },
-            cell: { userEnteredFormat: { numberFormat: { type: 'CURRENCY', pattern: '"$"#,##0.00' } } },
-            fields: 'userEnteredFormat.numberFormat'
-          }
-        }
-      ]
-    });
-  };
-
-  try {
-    await applyFormatting();
-  } catch (e) {
-    // Wait 2 seconds and retry once — handles API propagation delay
-    await new Promise(r => setTimeout(r, 2000));
-    try {
-      await applyFormatting();
-    } catch (e2) {
-      // Formatting is cosmetic — log and continue rather than failing setup
-      console.warn('Column formatting skipped:', e2.message);
-    }
-  }
-
+  // Store for post-setup formatting
+  res._sheetId = sheetId;
   return spreadsheetId;
 }
 
