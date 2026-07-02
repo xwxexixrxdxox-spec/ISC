@@ -266,9 +266,53 @@ async function runFullSetup() {
     setTimeout(() => { show('screen-main'); initMain(); }, 1500);
 
   } catch (e) {
-    setStatus('setupStatus', '❌ Setup failed: ' + e.message + ' — tap back and try again.', 'err');
-    document.getElementById('setupStep').textContent = 'Something went wrong.';
     console.error(e);
+    const msg = e.message || '';
+
+    // ── Known error: Apps Script API not enabled in user's Google account ──
+    if (msg.includes('Apps Script API') || msg.includes('script.googleapis') || msg.includes('accessNotConfigured') || msg.includes('SERVICE_DISABLED')) {
+      document.getElementById('setupStep').textContent = 'Action needed — one quick step.';
+      document.getElementById('progressFill').style.background = '#f59e0b';
+      document.getElementById('setupStatus').innerHTML = `
+        <div class="status warn">
+          <b>⚠️ One more step needed</b><br><br>
+          You need to enable the Apps Script API in your Google account settings.
+          It takes 5 seconds — tap the button below, flip the toggle, then come back and tap Retry.
+        </div>
+        <a href="https://script.google.com/home/usersettings" target="_blank"
+           style="display:block;background:#f59e0b;color:#000;font-weight:700;text-align:center;padding:12px;border-radius:8px;margin-top:10px;text-decoration:none;">
+          🔧 Open Apps Script Settings
+        </a>
+        <button class="btn-primary" id="retryBtn" style="margin-top:8px;">↩ Retry Setup</button>`;
+      document.getElementById('retryBtn').addEventListener('click', () => {
+        document.getElementById('setupLog').innerHTML = '';
+        document.getElementById('progressFill').style.background = 'var(--accent)';
+        setStatus('setupStatus', '', 'info');
+        runFullSetup();
+      });
+      return;
+    }
+
+    // ── Known error: OAuth token expired mid-setup ──
+    if (msg.includes('401') || msg.includes('invalid_token') || msg.includes('Unauthorized')) {
+      document.getElementById('setupStep').textContent = 'Session expired.';
+      document.getElementById('setupStatus').innerHTML = `
+        <div class="status err">Your Google session expired mid-setup. Tap below to sign in again — setup will restart.</div>
+        <button class="btn-primary" id="retryAuthBtn" style="margin-top:8px;">🔄 Sign In & Retry</button>`;
+      document.getElementById('retryAuthBtn').addEventListener('click', () => {
+        document.getElementById('setupLog').innerHTML = '';
+        setStatus('setupStatus', '', 'info');
+        requestToken(runFullSetup);
+      });
+      return;
+    }
+
+    // ── Unknown error: show message with retry ──
+    document.getElementById('setupStep').textContent = 'Something went wrong.';
+    document.getElementById('setupStatus').innerHTML = `
+      <div class="status err">❌ ${msg || 'Unknown error during setup.'}</div>
+      <button class="btn-secondary" id="retryGenBtn" style="margin-top:8px;">↩ Go Back & Retry</button>`;
+    document.getElementById('retryGenBtn').addEventListener('click', () => show('screen-connect'));
   }
 }
 
