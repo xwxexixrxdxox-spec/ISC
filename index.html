@@ -349,7 +349,19 @@ async function runFullSetup() {
     const webAppUrl = await deployScript(scriptId, versionNumber);
     logLine('✓ Web App deployed');
 
-    // 6. Save everything
+    // 6. Warm up the script — makes one authorized request so Google
+    //    registers the deployment as active before anonymous calls work
+    log('Activating script...', 88);
+    try {
+      await fetch(webAppUrl + '?barcode=__warmup__', {
+        headers: { 'Authorization': 'Bearer ' + S.accessToken }
+      });
+      logLine('✓ Script activated');
+    } catch(e) {
+      console.warn('Warmup fetch failed (non-fatal):', e.message);
+    }
+
+    // 7. Save everything
     const sheetUrl = 'https://docs.google.com/spreadsheets/d/' + sheetId;
     localStorage.setItem('scriptUrl', webAppUrl);
     localStorage.setItem('sheetUrl', sheetUrl);
@@ -360,8 +372,7 @@ async function runFullSetup() {
     logLine('✓ Everything connected');
     setStatus('setupStatus', '🎉 Your inventory system is ready!', 'ok');
 
-    // Apply column formatting after a 3 second delay — purely cosmetic,
-    // runs in background and never blocks or crashes setup
+    // Apply column formatting after a 3 second delay — purely cosmetic
     setTimeout(() => applySheetFormatting(sheetId, S.accessToken), 3000);
 
     setTimeout(() => { show('screen-main'); initMain(); }, 1500);
@@ -420,7 +431,7 @@ async function runFullSetup() {
 async function createSheet() {
   const boldHeader = (label) => ({
     userEnteredValue: { stringValue: label },
-    userEnteredFormat: { textFormat: { bold: true, foregroundColor: { red: 1, green: 1, blue: 1 } }, backgroundColor: { red: 0.063, green: 0.196, blue: 0.388 } }
+    userEnteredFormat: { textFormat: { bold: true }, backgroundColor: { red: 0.118, green: 0.165, blue: 0.278 } }
   });
   const res = await gapi('https://sheets.googleapis.com/v4/spreadsheets', 'POST', {
     properties: { title: 'Inventory Scanner — My Stock' },
