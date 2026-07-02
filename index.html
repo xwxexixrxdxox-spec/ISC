@@ -1,6 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
-<head> 
+<head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Inventory Scanner</title>
@@ -222,8 +222,8 @@
 // ─── State ───────────────────────────────────────────────────────────────────
 const S = {
   clientId: localStorage.getItem('gClientId') || '',
-  scriptUrl: localStorage.getItem('scriptUrl') || '',
   sheetUrl: localStorage.getItem('sheetUrl') || '',
+  spreadsheetId: localStorage.getItem('spreadsheetId') || '',
   accessToken: null,
 };
 
@@ -235,7 +235,12 @@ function show(id) {
 }
 
 function init() {
-  if (S.scriptUrl && S.sheetUrl) { show('screen-main'); initMain(); return; }
+  // Extract spreadsheetId from sheetUrl if we have one but not the other
+  if (S.sheetUrl && !S.spreadsheetId) {
+    const m = S.sheetUrl.match(/\/spreadsheets\/d\/([a-zA-Z0-9_-]+)/);
+    if (m) { S.spreadsheetId = m[1]; localStorage.setItem('spreadsheetId', m[1]); }
+  }
+  if (S.spreadsheetId) { show('screen-main'); initMain(); return; }
   if (S.clientId) { show('screen-connect'); return; }
   show('screen-clientid');
 }
@@ -325,55 +330,24 @@ async function runFullSetup() {
   show('screen-setup');
   try {
     // 1. Create Google Sheet
-    log('Creating your Google Sheet...', 10);
-    const sheetId = await createSheet();
+    log('Creating your Google Sheet...', 40);
+    const spreadsheetId = await createSheet();
     logLine('✓ Sheet created');
 
-    // 2. Create Apps Script project
-    log('Creating Apps Script project...', 30);
-    const scriptId = await createScriptProject(sheetId);
-    logLine('✓ Script project created');
-
-    // 3. Upload script code
-    log('Writing inventory logic to script...', 50);
-    await uploadScriptCode(scriptId, sheetId);
-    logLine('✓ Script code uploaded');
-
-    // 4. Create version
-    log('Publishing script version...', 65);
-    const versionNumber = await createVersion(scriptId);
-    logLine('✓ Version created');
-
-    // 5. Deploy as Web App
-    log('Deploying as Web App...', 80);
-    const webAppUrl = await deployScript(scriptId, versionNumber);
-    logLine('✓ Web App deployed');
-
-    // 6. Warm up the script — makes one authorized request so Google
-    //    registers the deployment as active before anonymous calls work
-    log('Activating script...', 88);
-    try {
-      await fetch(webAppUrl + '?barcode=__warmup__', {
-        headers: { 'Authorization': 'Bearer ' + S.accessToken }
-      });
-      logLine('✓ Script activated');
-    } catch(e) {
-      console.warn('Warmup fetch failed (non-fatal):', e.message);
-    }
-
-    // 7. Save everything
-    const sheetUrl = 'https://docs.google.com/spreadsheets/d/' + sheetId;
-    localStorage.setItem('scriptUrl', webAppUrl);
+    // 2. Save everything — no Apps Script needed, we write directly via Sheets API
+    log('Connecting...', 90);
+    const sheetUrl = 'https://docs.google.com/spreadsheets/d/' + spreadsheetId;
     localStorage.setItem('sheetUrl', sheetUrl);
-    S.scriptUrl = webAppUrl;
+    localStorage.setItem('spreadsheetId', spreadsheetId);
     S.sheetUrl = sheetUrl;
+    S.spreadsheetId = spreadsheetId;
+    logLine('✓ Sheet connected');
 
     log('All done!', 100);
-    logLine('✓ Everything connected');
     setStatus('setupStatus', '🎉 Your inventory system is ready!', 'ok');
 
-    // Apply column formatting after a 3 second delay — purely cosmetic
-    setTimeout(() => applySheetFormatting(sheetId, S.accessToken), 3000);
+    // Apply column formatting in background — cosmetic only
+    setTimeout(() => applySheetFormatting(spreadsheetId, S.accessToken), 3000);
 
     setTimeout(() => { show('screen-main'); initMain(); }, 1500);
 
@@ -587,6 +561,7 @@ function initMain() {
     if (confirm('This will disconnect your sheet. You can reconnect anytime.')) {
       localStorage.removeItem('scriptUrl');
       localStorage.removeItem('sheetUrl');
+      localStorage.removeItem('spreadsheetId');
       location.reload();
     }
   });
@@ -697,37 +672,119 @@ document.getElementById('barcode').addEventListener('change', () => {
   if (v) lookupBarcode(v);
 });
 
-async function submitChange(direction) {
-  const url = S.scriptUrl;
+// ─── Sheets API helpers ──────────────────────────────────────────────────────
+async function sheetsRead(spreadsheetId, range) {
+  const res = await fetch(
+    'https://sheets.googleapis.com/v4/spreadsheets/' + spreadsheetId + '/values/' + encodeURIComponent(range),
+    { headers: { 'Authorization': 'Bearer ' + S.accessToken } }
+  );
+  if (res.status === 401) throw new Error('TOKEN_EXPIRED');
+  if (!res.ok) throw new Error('Read failed: ' + res.status);
+  return res.json();
+}
+
+async function sheetsBatchUpdate(spreadsheetId, data) {
+  const res = await fetch(
+    'https://sheets.googleapis.com/v4/spreadsheets/' + spreadsheetId + '/values:batchUpdate',
+    {
+      method: 'POST',
+      headers: { 'Authorization': 'Bearer ' + S.accessToken, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ valueInputOption: 'USER_ENTERED', data })
+    }
+  );
+  if (res.status === 401) throw new Error('TOKEN_EXPIRED');
+  if (!res.ok) throw new Error('Update failed: ' + res.status);
+  return res.json();
+}
+
+async function sheetsAppend(spreadsheetId, row) {
+  const res = await fetch(
+    'https://sheets.googleapis.com/v4/spreadsheets/' + spreadsheetId + '/values/Inventory!A:F:append?valueInputOption=USER_ENTERED&insertDataOption=INSERT_ROWS',
+    {
+      method: 'POST',
+      headers: { 'Authorization': 'Bearer ' + S.accessToken, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ majorDimension: 'ROWS', values: [row] })
+    }
+  );
+  if (res.status === 401) throw new Error('TOKEN_EXPIRED');
+  if (!res.ok) throw new Error('Append failed: ' + res.status);
+  return res.json();
+}
+
+function refreshToken() {
+  return new Promise((resolve) => {
+    const client = google.accounts.oauth2.initTokenClient({
+      client_id: S.clientId,
+      scope: 'https://www.googleapis.com/auth/spreadsheets https://www.googleapis.com/auth/drive',
+      callback: (resp) => { if (!resp.error) S.accessToken = resp.access_token; resolve(); }
+    });
+    client.requestAccessToken({ prompt: '' });
+  });
+}
+
+async function submitChange(direction, isRetry) {
+  const spreadsheetId = S.spreadsheetId;
   const barcode = document.getElementById('barcode').value.trim();
   const description = document.getElementById('description').value.trim();
   const qty = parseInt(document.getElementById('qty').value, 10) || 0;
   if (!barcode) { setStatus('result', 'Scan or enter a barcode first.', 'err'); return; }
-  if (!url) { setStatus('result', 'Not connected to a sheet yet.', 'err'); return; }
-  setStatus('result', 'Sending...', 'info');
+  if (!spreadsheetId) { setStatus('result', 'Not connected — use Reset & Reconnect in Settings.', 'err'); return; }
+
+  // Get a token if we don't have one (e.g. after page reload)
+  if (!S.accessToken) {
+    setStatus('result', 'Signing in...', 'info');
+    await refreshToken();
+  }
+
+  setStatus('result', 'Saving...', 'info');
   try {
-    const qtyChange = direction === 'add' ? qty : -qty;
     const unitSel = document.getElementById('unit');
     const unit = unitSel.value === 'custom'
       ? document.getElementById('unitCustom').value.trim()
       : unitSel.value;
     const price = document.getElementById('price').value.trim();
-    const params = new URLSearchParams({
-      action: 'update', barcode, description,
-      qtyChange: String(qtyChange),
-      unit: unit,
-      price: price,
-      timestamp: new Date().toISOString()
-    });
-    const res = await fetch(url + '?' + params.toString());
-    const data = await res.json();
-    if (data.ok) {
-      setStatus('result', (direction === 'add' ? '✅ +' : '✅ -') + qty + ' — New qty: ' + data.newQty, 'ok');
-    } else {
-      setStatus('result', '⚠️ Script error: ' + (data.error || 'unknown'), 'err');
+    const qtyChange = direction === 'add' ? qty : -qty;
+    const timestamp = new Date().toLocaleString();
+
+    // Read current sheet to find existing row
+    const sheetData = await sheetsRead(spreadsheetId, 'Inventory!A:F');
+    const rows = sheetData.values || [[]];
+
+    let rowIndex = -1;
+    for (let i = 1; i < rows.length; i++) {
+      if (String(rows[i][0] || '').trim() === barcode) { rowIndex = i; break; }
     }
+
+    let newQty;
+    if (rowIndex === -1) {
+      // New item — append row
+      newQty = Math.max(qtyChange, 0);
+      await sheetsAppend(spreadsheetId, [barcode, description, newQty, unit, price ? parseFloat(price) : '', timestamp]);
+    } else {
+      // Existing item — batch update changed cells only
+      const currentQty = Number(rows[rowIndex][2]) || 0;
+      newQty = Math.max(currentQty + qtyChange, 0);
+      const r = rowIndex + 1;
+      const updates = [
+        { range: 'Inventory!C' + r, values: [[newQty]] },
+        { range: 'Inventory!F' + r, values: [[timestamp]] }
+      ];
+      if (description && !rows[rowIndex][1]) updates.push({ range: 'Inventory!B' + r, values: [[description]] });
+      if (unit && !rows[rowIndex][3]) updates.push({ range: 'Inventory!D' + r, values: [[unit]] });
+      if (price && !rows[rowIndex][4]) updates.push({ range: 'Inventory!E' + r, values: [[parseFloat(price)]] });
+      await sheetsBatchUpdate(spreadsheetId, updates);
+    }
+
+    setStatus('result', (direction === 'add' ? '✅ +' : '✅ -') + qty + ' — Stock: ' + newQty, 'ok');
+
   } catch(e) {
-    setStatus('result', '❌ ' + e.message, 'err');
+    if (e.message === 'TOKEN_EXPIRED' && !isRetry) {
+      setStatus('result', 'Session expired, refreshing...', 'info');
+      await refreshToken();
+      submitChange(direction, true);
+    } else {
+      setStatus('result', '❌ ' + e.message, 'err');
+    }
   }
 }
 
