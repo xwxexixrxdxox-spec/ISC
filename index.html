@@ -719,9 +719,16 @@ async function submitChange(direction) {
       price: price,
       timestamp: new Date().toISOString()
     });
-    await fetch(url + '?' + params.toString(), { method: 'GET', mode: 'no-cors' });
-    setStatus('result', (direction === 'add' ? '✅ +' : '✅ -') + qty + ' sent! Check your sheet to confirm.', 'ok');
-  } catch(e) { setStatus('result', 'Failed: ' + e.message, 'err'); }
+    const res = await fetch(url + '?' + params.toString());
+    const data = await res.json();
+    if (data.ok) {
+      setStatus('result', (direction === 'add' ? '✅ +' : '✅ -') + qty + ' — New qty: ' + data.newQty, 'ok');
+    } else {
+      setStatus('result', '⚠️ Script error: ' + (data.error || 'unknown'), 'err');
+    }
+  } catch(e) {
+    setStatus('result', '❌ ' + e.message, 'err');
+  }
 }
 
 document.getElementById('addBtn').addEventListener('click', () => submitChange('add'));
