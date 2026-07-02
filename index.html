@@ -373,13 +373,24 @@ async function createSheet() {
   });
   const spreadsheetId = res.spreadsheetId;
   await gapi('https://sheets.googleapis.com/v4/spreadsheets/' + spreadsheetId + ':batchUpdate', 'POST', {
-    requests: [{
-      repeatCell: {
-        range: { sheetId: 0, startRowIndex: 1, startColumnIndex: 4, endColumnIndex: 5 },
-        cell: { userEnteredFormat: { numberFormat: { type: 'CURRENCY', pattern: '"$"#,##0.00' } } },
-        fields: 'userEnteredFormat.numberFormat'
+    requests: [
+      {
+        // Barcode column (A) as plain text — preserves leading zeros
+        repeatCell: {
+          range: { sheetId: 0, startRowIndex: 1, startColumnIndex: 0, endColumnIndex: 1 },
+          cell: { userEnteredFormat: { numberFormat: { type: 'TEXT' } } },
+          fields: 'userEnteredFormat.numberFormat'
+        }
+      },
+      {
+        // Price column (E) as currency
+        repeatCell: {
+          range: { sheetId: 0, startRowIndex: 1, startColumnIndex: 4, endColumnIndex: 5 },
+          cell: { userEnteredFormat: { numberFormat: { type: 'CURRENCY', pattern: '"$"#,##0.00' } } },
+          fields: 'userEnteredFormat.numberFormat'
+        }
       }
-    }]
+    ]
   });
   return spreadsheetId;
 }
@@ -425,7 +436,12 @@ function doGet(e) {
     var newQty;
     if (rowIndex === -1) {
       newQty = Math.max(qtyChange, 0);
+      var newRow = sheet.getLastRow() + 1;
       sheet.appendRow([barcode, description, newQty, unit, price !== null ? price : '', timestamp]);
+      // Force barcode cell to text so leading zeros are preserved
+      var barcodeCell = sheet.getRange(newRow, 1);
+      barcodeCell.setNumberFormat('@STRING@');
+      barcodeCell.setValue(barcode);
     } else {
       var currentQty = Number(values[rowIndex - 1][2]) || 0;
       newQty = Math.max(currentQty + qtyChange, 0);
