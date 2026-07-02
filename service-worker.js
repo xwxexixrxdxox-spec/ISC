@@ -1,40 +1,58 @@
-// Inventory Scanner — Service Worker
-// Caches the app shell so it loads offline.
-// Stock updates still require a connection to reach Google Sheets.
-
-const CACHE_NAME = 'inventory-scanner-v3';
-const ASSETS = [
-  '/ISC/',
-  '/ISC/index.html',
-  '/ISC/manifest.json'
+const CACHE_NAME = 'inventory-scanner-v4';
+const STATIC_ASSETS = [
+  '/ISC/manifest.json',
+  '/ISC/icons/icon-192.png',
+  '/ISC/icons/icon-512.png'
 ];
 
-// Install: cache the app shell
+// Install: only cache static assets, never the HTML itself
 self.addEventListener('install', event => {
   event.waitUntil(
-    caches.open(CACHE_NAME).then(cache => cache.addAll(ASSETS))
+    caches.open(CACHE_NAME).then(cache => cache.addAll(STATIC_ASSETS))
   );
   self.skipWaiting();
 });
 
-// Activate: clean up old caches
+// Activate: wipe every old cache immediately
 self.addEventListener('activate', event => {
   event.waitUntil(
     caches.keys().then(keys =>
-      Promise.all(keys.filter(k => k !== CACHE_NAME).map(k => caches.delete(k)))
+      Promise.all(keys.filter(k => k !== CACHE_NAME).map(k => {
+        console.log('[SW] Deleting old cache:', k);
+        return caches.delete(k);
+      }))
     )
   );
   self.clients.claim();
 });
 
-// Fetch: serve from cache, fall back to network
+// Fetch strategy:
+// - HTML pages: network first, fall back to cache (ensures updates always land)
+// - Google / Open Food Facts API calls: always network, never cache
+// - Everything else: cache first, fall back to network
 self.addEventListener('fetch', event => {
-  // Always go to network for Google Sheets/Apps Script calls
-  if (event.request.url.includes('script.google.com') ||
-      event.request.url.includes('openfoodfacts.org')) {
+  const url = new URL(event.request.url);
+
+  // Never intercept Google or API calls
+  if (url.hostname.includes('google') || url.hostname.includes('openfoodfacts')) {
     return;
   }
 
+  // HTML: network first so updates are always picked up
+  if (event.request.destination === 'document' || url.pathname.endsWith('.html') || url.pathname.endsWith('/')) {
+    event.respondWith(
+      fetch(event.request)
+        .then(res => {
+          const clone = res.clone();
+          caches.open(CACHE_NAME).then(c => c.put(event.request, clone));
+          return res;
+        })
+        .catch(() => caches.match(event.request))
+    );
+    return;
+  }
+
+  // Static assets: cache first
   event.respondWith(
     caches.match(event.request).then(cached => cached || fetch(event.request))
   );
