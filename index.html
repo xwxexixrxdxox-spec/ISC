@@ -420,7 +420,7 @@ async function runFullSetup() {
 async function createSheet() {
   const boldHeader = (label) => ({
     userEnteredValue: { stringValue: label },
-    userEnteredFormat: { textFormat: { bold: true }, backgroundColor: { red: 0.118, green: 0.165, blue: 0.278 } }
+    userEnteredFormat: { textFormat: { bold: true, foregroundColor: { red: 1, green: 1, blue: 1 } }, backgroundColor: { red: 0.063, green: 0.196, blue: 0.388 } }
   });
   const res = await gapi('https://sheets.googleapis.com/v4/spreadsheets', 'POST', {
     properties: { title: 'Inventory Scanner — My Stock' },
