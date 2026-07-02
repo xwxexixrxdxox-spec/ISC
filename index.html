@@ -142,8 +142,43 @@
     <input id="barcode" placeholder="Scan or type manually" inputmode="numeric">
     <label>Item Description</label>
     <input id="description" placeholder="Auto-fills from lookup, or type your own">
-    <label>Quantity</label>
-    <input id="qty" type="number" value="1" min="1">
+
+    <div class="row" style="margin-top:0;">
+      <div style="flex:1;">
+        <label>Quantity</label>
+        <input id="qty" type="number" value="1" min="1">
+      </div>
+      <div style="flex:1;">
+        <label>Unit of Measure</label>
+        <select id="unit" style="width:100%;padding:10px;background:#0f172a;border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:0.9rem;margin-bottom:4px;">
+          <option value="ea">each (ea)</option>
+          <option value="box">box</option>
+          <option value="case">case</option>
+          <option value="pack">pack</option>
+          <option value="bag">bag</option>
+          <option value="bottle">bottle</option>
+          <option value="can">can</option>
+          <option value="roll">roll</option>
+          <option value="dozen">dozen</option>
+          <option value="pair">pair</option>
+          <option value="kg">kg</option>
+          <option value="lb">lb</option>
+          <option value="oz">oz</option>
+          <option value="g">g</option>
+          <option value="L">L</option>
+          <option value="ml">ml</option>
+          <option value="fl oz">fl oz</option>
+          <option value="custom">custom...</option>
+        </select>
+        <input id="unitCustom" placeholder="Enter unit" style="display:none;">
+      </div>
+    </div>
+
+    <label>Price per Unit <span id="priceTag" style="font-size:0.7rem;color:#93c5fd;margin-left:4px;"></span></label>
+    <div style="position:relative;">
+      <span style="position:absolute;left:10px;top:50%;transform:translateY(-50%);color:var(--muted);">$</span>
+      <input id="price" type="number" step="0.01" min="0" placeholder="0.00" style="padding-left:24px;">
+    </div>
 
     <div class="row" style="margin-top:10px;">
       <button class="btn-green" id="addBtn">+ Add Stock</button>
@@ -317,20 +352,36 @@ async function runFullSetup() {
 }
 
 async function createSheet() {
+  const boldHeader = (label) => ({
+    userEnteredValue: { stringValue: label },
+    userEnteredFormat: { textFormat: { bold: true }, backgroundColor: { red: 0.118, green: 0.165, blue: 0.278 } }
+  });
   const res = await gapi('https://sheets.googleapis.com/v4/spreadsheets', 'POST', {
     properties: { title: 'Inventory Scanner — My Stock' },
     sheets: [{ properties: { title: 'Inventory' },
       data: [{ startRow: 0, startColumn: 0, rowData: [{
         values: [
-          { userEnteredValue: { stringValue: 'Barcode' }, userEnteredFormat: { textFormat: { bold: true } } },
-          { userEnteredValue: { stringValue: 'Description' }, userEnteredFormat: { textFormat: { bold: true } } },
-          { userEnteredValue: { stringValue: 'Quantity' }, userEnteredFormat: { textFormat: { bold: true } } },
-          { userEnteredValue: { stringValue: 'Last Updated' }, userEnteredFormat: { textFormat: { bold: true } } }
+          boldHeader('Barcode'),
+          boldHeader('Description'),
+          boldHeader('Quantity'),
+          boldHeader('Unit'),
+          boldHeader('Price'),
+          boldHeader('Last Updated')
         ]
       }] }]
     }]
   });
-  return res.spreadsheetId;
+  const spreadsheetId = res.spreadsheetId;
+  await gapi('https://sheets.googleapis.com/v4/spreadsheets/' + spreadsheetId + ':batchUpdate', 'POST', {
+    requests: [{
+      repeatCell: {
+        range: { sheetId: 0, startRowIndex: 1, startColumnIndex: 4, endColumnIndex: 5 },
+        cell: { userEnteredFormat: { numberFormat: { type: 'CURRENCY', pattern: '"$"#,##0.00' } } },
+        fields: 'userEnteredFormat.numberFormat'
+      }
+    }]
+  });
+  return spreadsheetId;
 }
 
 async function createScriptProject(sheetId) {
@@ -363,6 +414,8 @@ function doGet(e) {
   if (e.parameter.action === 'update') {
     var description = String(e.parameter.description || '').trim();
     var qtyChange = Number(e.parameter.qtyChange) || 0;
+    var unit = String(e.parameter.unit || '').trim();
+    var price = e.parameter.price !== '' && e.parameter.price !== undefined ? parseFloat(e.parameter.price) : null;
     var timestamp = e.parameter.timestamp || new Date().toISOString();
     var values = sheet.getDataRange().getValues();
     var rowIndex = -1;
@@ -372,13 +425,15 @@ function doGet(e) {
     var newQty;
     if (rowIndex === -1) {
       newQty = Math.max(qtyChange, 0);
-      sheet.appendRow([barcode, description, newQty, timestamp]);
+      sheet.appendRow([barcode, description, newQty, unit, price !== null ? price : '', timestamp]);
     } else {
       var currentQty = Number(values[rowIndex - 1][2]) || 0;
       newQty = Math.max(currentQty + qtyChange, 0);
       sheet.getRange(rowIndex, 3).setValue(newQty);
-      sheet.getRange(rowIndex, 4).setValue(timestamp);
+      sheet.getRange(rowIndex, 6).setValue(timestamp);
       if (description && !values[rowIndex - 1][1]) sheet.getRange(rowIndex, 2).setValue(description);
+      if (unit && !values[rowIndex - 1][3]) sheet.getRange(rowIndex, 4).setValue(unit);
+      if (price !== null && !values[rowIndex - 1][4]) sheet.getRange(rowIndex, 5).setValue(price);
     }
     return jsonResponse({ ok: true, newQty: newQty });
   }
@@ -386,7 +441,7 @@ function doGet(e) {
   var values = sheet.getDataRange().getValues();
   for (var i = 1; i < values.length; i++) {
     if (String(values[i][0]).trim() === barcode) {
-      return jsonResponse({ ok: true, found: true, description: values[i][1], qty: values[i][2] });
+      return jsonResponse({ ok: true, found: true, description: values[i][1], qty: values[i][2], unit: values[i][3], price: values[i][4] });
     }
   }
   return jsonResponse({ ok: true, found: false });
@@ -508,15 +563,58 @@ async function scanLoop() {
 
 async function lookupBarcode(code) {
   try {
+    // Product info + unit from Open Food Facts
     const res = await fetch('https://world.openfoodfacts.org/api/v2/product/' + code + '.json');
     const data = await res.json();
+    let foundSomething = false;
+
     if (data.status === 1 && data.product) {
-      const name = data.product.product_name || data.product.generic_name || '';
-      if (name) { document.getElementById('description').value = name; setStatus('cameraStatus', 'Found: ' + name, 'ok'); return; }
+      const p = data.product;
+      const name = p.product_name || p.generic_name || '';
+      if (name) { document.getElementById('description').value = name; foundSomething = true; }
+
+      // Try to parse unit from quantity field e.g. "330 ml", "500 g", "12 x 35g"
+      if (p.quantity) {
+        const unitMatch = p.quantity.match(/\b(ml|mL|L|l|g|kg|oz|lb|fl oz|cl)\b/);
+        if (unitMatch) {
+          const u = unitMatch[1].toLowerCase();
+          const sel = document.getElementById('unit');
+          const opt = [...sel.options].find(o => o.value.toLowerCase() === u);
+          if (opt) sel.value = opt.value;
+          else { sel.value = 'custom'; document.getElementById('unitCustom').style.display = 'block'; document.getElementById('unitCustom').value = unitMatch[1]; }
+        }
+      }
     }
-    setStatus('cameraStatus', 'No public match — type a description below.', 'info');
-  } catch(e) { setStatus('cameraStatus', 'Lookup failed — type description manually.', 'warn'); }
+
+    // Price from Open Food Facts Prices API (crowdsourced)
+    try {
+      const priceRes = await fetch('https://prices.openfoodfacts.org/api/v1/prices?product_code=' + code + '&page_size=5');
+      const priceData = await priceRes.json();
+      if (priceData.items && priceData.items.length > 0) {
+        // Average the top results for a reasonable estimate
+        const prices = priceData.items.map(i => parseFloat(i.price)).filter(p => p > 0);
+        if (prices.length > 0) {
+          const avg = (prices.reduce((a, b) => a + b, 0) / prices.length).toFixed(2);
+          document.getElementById('price').value = avg;
+          document.getElementById('priceTag').textContent = '(estimated avg — edit freely)';
+          foundSomething = true;
+        }
+      }
+    } catch(e) { /* price lookup is best-effort */ }
+
+    if (foundSomething) {
+      setStatus('cameraStatus', 'Found public data — review and adjust before saving.', 'ok');
+    } else {
+      setStatus('cameraStatus', 'No public match — fill in the details below.', 'info');
+    }
+  } catch(e) { setStatus('cameraStatus', 'Lookup failed — fill in details manually.', 'warn'); }
 }
+
+// Show/hide custom unit input
+document.getElementById('unit').addEventListener('change', function() {
+  const cu = document.getElementById('unitCustom');
+  cu.style.display = this.value === 'custom' ? 'block' : 'none';
+});
 
 document.getElementById('barcode').addEventListener('change', () => {
   const v = document.getElementById('barcode').value.trim();
@@ -533,7 +631,18 @@ async function submitChange(direction) {
   setStatus('result', 'Sending...', 'info');
   try {
     const qtyChange = direction === 'add' ? qty : -qty;
-    const params = new URLSearchParams({ action: 'update', barcode, description, qtyChange: String(qtyChange), timestamp: new Date().toISOString() });
+    const unitSel = document.getElementById('unit');
+    const unit = unitSel.value === 'custom'
+      ? document.getElementById('unitCustom').value.trim()
+      : unitSel.value;
+    const price = document.getElementById('price').value.trim();
+    const params = new URLSearchParams({
+      action: 'update', barcode, description,
+      qtyChange: String(qtyChange),
+      unit: unit,
+      price: price,
+      timestamp: new Date().toISOString()
+    });
     await fetch(url + '?' + params.toString(), { method: 'GET', mode: 'no-cors' });
     setStatus('result', (direction === 'add' ? '✅ +' : '✅ -') + qty + ' sent! Check your sheet to confirm.', 'ok');
   } catch(e) { setStatus('result', 'Failed: ' + e.message, 'err'); }
