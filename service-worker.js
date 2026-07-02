@@ -1,4 +1,4 @@
-const CACHE_NAME = 'inventory-scanner-v5';
+const CACHE_NAME = 'inventory-scanner-v6';
 const STATIC_ASSETS = [
   '/ISC/manifest.json',
   '/ISC/icons/icon-192.png',
