@@ -1,7 +1,7 @@
 {
   "name": "Inventory Scanner",
   "short_name": "InvScanner",
-  "description": "Scan barcodes to track inventory in real time. Updates sync live to Google Sheets.",
+  "description": "Scan barcodes, track stock in real time, sync to Google Sheets. Offline-capable.",
   "start_url": "/ISC/",
   "scope": "/ISC/",
   "display": "standalone",
@@ -11,37 +11,17 @@
   "lang": "en",
   "dir": "ltr",
   "categories": ["business", "productivity", "utilities"],
-  "iarc_rating_id": "",
   "prefer_related_applications": false,
+  "display_override": ["standalone", "minimal-ui"],
   "icons": [
-    {
-      "src": "./Icons/icon-192.png",
-      "sizes": "192x192",
-      "type": "image/png",
-      "purpose": "any"
-    },
-    {
-      "src": "./Icons/icon-192.png",
-      "sizes": "192x192",
-      "type": "image/png",
-      "purpose": "maskable"
-    },
-    {
-      "src": "./Icons/icon-512.png",
-      "sizes": "512x512",
-      "type": "image/png",
-      "purpose": "any"
-    },
-    {
-      "src": "./Icons/icon-512.png",
-      "sizes": "512x512",
-      "type": "image/png",
-      "purpose": "maskable"
-    }
+    { "src": "./icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "./icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "maskable" },
+    { "src": "./icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "./icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
   ],
   "screenshots": [
     {
-      "src": "./Icons/icon-512.png",
+      "src": "./icons/icon-512.png",
       "sizes": "512x512",
       "type": "image/png",
       "form_factor": "narrow",
@@ -54,9 +34,14 @@
       "short_name": "Scan",
       "description": "Open the scanner directly",
       "url": "/ISC/?action=scan",
-      "icons": [{ "src": "./Icons/icon-192.png", "sizes": "192x192" }]
+      "icons": [{ "src": "./icons/icon-192.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "View Inventory",
+      "short_name": "Inventory",
+      "description": "View current stock levels",
+      "url": "/ISC/?tab=inv",
+      "icons": [{ "src": "./icons/icon-192.png", "sizes": "192x192" }]
     }
-  ],
-  "protocol_handlers": [],
-  "display_override": ["standalone", "minimal-ui"]
+  ]
 }

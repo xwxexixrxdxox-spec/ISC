@@ -1,59 +1,52 @@
-const CACHE_NAME = 'inventory-scanner-v6';
-const STATIC_ASSETS = [
+/* Inventory Scanner — Service Worker isc-v5 */
+const CACHE   = 'isc-v5';
+const STATIC  = [
   '/ISC/manifest.json',
   '/ISC/icons/icon-192.png',
-  '/ISC/icons/icon-512.png'
+  '/ISC/icons/icon-512.png',
 ];
 
-// Install: only cache static assets, never the HTML itself
-self.addEventListener('install', event => {
-  event.waitUntil(
-    caches.open(CACHE_NAME).then(cache => cache.addAll(STATIC_ASSETS))
-  );
+self.addEventListener('install', e => {
+  e.waitUntil(caches.open(CACHE).then(c => c.addAll(STATIC)));
   self.skipWaiting();
 });
 
-// Activate: wipe every old cache immediately
-self.addEventListener('activate', event => {
-  event.waitUntil(
+self.addEventListener('activate', e => {
+  e.waitUntil(
     caches.keys().then(keys =>
-      Promise.all(keys.filter(k => k !== CACHE_NAME).map(k => {
-        console.log('[SW] Deleting old cache:', k);
-        return caches.delete(k);
-      }))
+      Promise.all(keys.filter(k => k !== CACHE).map(k => caches.delete(k)))
     )
   );
   self.clients.claim();
 });
 
-// Fetch strategy:
-// - HTML pages: network first, fall back to cache (ensures updates always land)
-// - Google / Open Food Facts API calls: always network, never cache
-// - Everything else: cache first, fall back to network
-self.addEventListener('fetch', event => {
-  const url = new URL(event.request.url);
+self.addEventListener('fetch', e => {
+  const url = new URL(e.request.url);
 
-  // Never intercept Google or API calls
-  if (url.hostname.includes('google') || url.hostname.includes('openfoodfacts')) {
-    return;
-  }
+  // Never intercept Google, Open Food Facts, or GIS calls
+  if (url.hostname.includes('google') ||
+      url.hostname.includes('openfoodfacts') ||
+      url.hostname.includes('googleapis')) return;
 
-  // HTML: network first so updates are always picked up
-  if (event.request.destination === 'document' || url.pathname.endsWith('.html') || url.pathname.endsWith('/')) {
-    event.respondWith(
-      fetch(event.request)
+  // HTML, JS, CSS: network-first so updates always land immediately
+  if (e.request.destination === 'document' ||
+      e.request.destination === 'script'   ||
+      e.request.destination === 'style'    ||
+      url.pathname.endsWith('/')) {
+    e.respondWith(
+      fetch(e.request)
         .then(res => {
           const clone = res.clone();
-          caches.open(CACHE_NAME).then(c => c.put(event.request, clone));
+          caches.open(CACHE).then(c => c.put(e.request, clone));
           return res;
         })
-        .catch(() => caches.match(event.request))
+        .catch(() => caches.match(e.request))
     );
     return;
   }
 
-  // Static assets: cache first
-  event.respondWith(
-    caches.match(event.request).then(cached => cached || fetch(event.request))
+  // Static assets (icons, manifest): cache-first
+  e.respondWith(
+    caches.match(e.request).then(hit => hit || fetch(e.request))
   );
 });
