@@ -459,8 +459,64 @@ async function createSheet() {
   });
   const spreadsheetId = res.spreadsheetId;
   const sheetId = res.sheets[0].properties.sheetId;
-  // Store for post-setup formatting
-  res._sheetId = sheetId;
+
+  // Pre-format rows 2–1000 as white/black immediately after creation so
+  // appended rows never inherit the header's navy style
+  const grey = { red: 0.6, green: 0.6, blue: 0.6 };
+  const solid = (c) => ({ style: 'SOLID', width: 1, color: c });
+  await gapi('https://sheets.googleapis.com/v4/spreadsheets/' + spreadsheetId + ':batchUpdate', 'POST', {
+    requests: [
+      {
+        // Header row: navy + white bold text
+        repeatCell: {
+          range: { sheetId, startRowIndex: 0, endRowIndex: 1, startColumnIndex: 0, endColumnIndex: 6 },
+          cell: { userEnteredFormat: {
+            backgroundColor: { red: 0, green: 0.125, blue: 0.376 },
+            textFormat: { bold: true, foregroundColor: { red: 1, green: 1, blue: 1 } }
+          }},
+          fields: 'userEnteredFormat(backgroundColor,textFormat)'
+        }
+      },
+      {
+        // Data rows: white + black text — set BEFORE any data arrives so
+        // appended rows inherit this instead of the header style
+        repeatCell: {
+          range: { sheetId, startRowIndex: 1, endRowIndex: 1000, startColumnIndex: 0, endColumnIndex: 6 },
+          cell: { userEnteredFormat: {
+            backgroundColor: { red: 1, green: 1, blue: 1 },
+            textFormat: { bold: false, foregroundColor: { red: 0, green: 0, blue: 0 } }
+          }},
+          fields: 'userEnteredFormat(backgroundColor,textFormat)'
+        }
+      },
+      {
+        // Barcode column: plain text to preserve leading zeros
+        repeatCell: {
+          range: { sheetId, startRowIndex: 1, endRowIndex: 1000, startColumnIndex: 0, endColumnIndex: 1 },
+          cell: { userEnteredFormat: { numberFormat: { type: 'TEXT' } } },
+          fields: 'userEnteredFormat.numberFormat'
+        }
+      },
+      {
+        // Price column: currency format
+        repeatCell: {
+          range: { sheetId, startRowIndex: 1, endRowIndex: 1000, startColumnIndex: 4, endColumnIndex: 5 },
+          cell: { userEnteredFormat: { numberFormat: { type: 'CURRENCY', pattern: '"$"#,##0.00' } } },
+          fields: 'userEnteredFormat.numberFormat'
+        }
+      },
+      {
+        // Borders on all cells
+        repeatCell: {
+          range: { sheetId, startRowIndex: 0, endRowIndex: 1000, startColumnIndex: 0, endColumnIndex: 6 },
+          cell: { userEnteredFormat: { borders: {
+            top: solid(grey), bottom: solid(grey), left: solid(grey), right: solid(grey)
+          }}},
+          fields: 'userEnteredFormat.borders'
+        }
+      }
+    ]
+  });
   return spreadsheetId;
 }
 
@@ -632,6 +688,7 @@ function stopScan() {
 
 let lastCode = null;
 let codeCount = 0;
+let missCount = 0;
 const CONFIRM_READS = 3; // require N identical reads before accepting
 
 async function scanLoop() {
@@ -650,7 +707,8 @@ async function scanLoop() {
         return;
       }
 
-      // Require CONFIRM_READS identical reads in a row
+      // Require CONFIRM_READS identical reads; allow up to 5 missed frames
+      missCount = 0;
       if (code === lastCode) {
         codeCount++;
       } else {
@@ -659,10 +717,10 @@ async function scanLoop() {
       }
 
       const pct = Math.round((codeCount / CONFIRM_READS) * 100);
-      setStatus('cameraStatus', 'Confirming scan... ' + pct + '%', 'info');
+      setStatus('cameraStatus', 'Hold steady... ' + pct + '%', 'info');
 
       if (codeCount >= CONFIRM_READS) {
-        lastCode = null; codeCount = 0;
+        lastCode = null; codeCount = 0; missCount = 0;
         document.getElementById('barcode').value = code;
         stopScan();
         document.getElementById('scanBtn').textContent = '📷 Scan Barcode';
@@ -671,8 +729,9 @@ async function scanLoop() {
         return;
       }
     } else {
-      // Reset streak if nothing detected
-      lastCode = null; codeCount = 0;
+      // Allow 5 missed frames before resetting — handles slight hand movement
+      missCount++;
+      if (missCount > 5) { lastCode = null; codeCount = 0; missCount = 0; }
     }
   } catch(e) {}
   requestAnimationFrame(scanLoop);
