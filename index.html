@@ -288,65 +288,74 @@ function requestToken(callback) {
 // ─── Full Setup Flow ──────────────────────────────────────────────────────────
 async function applySheetFormatting(spreadsheetId, token) {
   try {
-    // Fetch the real sheetId from the spreadsheet properties
     const meta = await fetch(
       'https://sheets.googleapis.com/v4/spreadsheets/' + spreadsheetId + '?fields=sheets.properties',
       { headers: { 'Authorization': 'Bearer ' + token } }
     ).then(r => r.json());
     const sheetId = meta.sheets[0].properties.sheetId;
 
+    const solidBorder = (color) => ({ style: 'SOLID', width: 1, color });
+    const grey = { red: 0.6, green: 0.6, blue: 0.6 };
+
     await fetch(
       'https://sheets.googleapis.com/v4/spreadsheets/' + spreadsheetId + ':batchUpdate',
       {
         method: 'POST',
         headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          requests: [
-            {
-              // Barcode column as plain text
-              repeatCell: {
-                range: { sheetId: sheetId, startRowIndex: 1, startColumnIndex: 0, endColumnIndex: 1 },
-                cell: { userEnteredFormat: { numberFormat: { type: 'TEXT' } } },
-                fields: 'userEnteredFormat.numberFormat'
-             }
-          },
+        body: JSON.stringify({ requests: [
           {
-            // Price column as currency
-              repeatCell: {
-                range: { sheetId: sheetId, startRowIndex: 1, startColumnIndex: 4, endColumnIndex: 5 },
-                cell: { userEnteredFormat: { numberFormat: { type: 'CURRENCY', pattern: '"$"#,##0.00' } } },
-                fields: 'userEnteredFormat.numberFormat'
-             }
-          },
-          {
-             // Data rows — white background, black text
-             repeatCell: {
-               range: { sheetId: sheetId, startRowIndex: 1, endRowIndex: 1000, startColumnIndex: 0, endColumnIndex: 6 },
-               cell: { userEnteredFormat: {
-               backgroundColor: { red: 1, green: 1, blue: 1 },
-               textFormat: { foregroundColor: { red: 0, green: 0, blue: 0 } }
-             }},
-             fields: 'userEnteredFormat(backgroundColor,textFormat.foregroundColor)'
+            // Row 1 (index 0): navy background, white bold text
+            repeatCell: {
+              range: { sheetId, startRowIndex: 0, endRowIndex: 1, startColumnIndex: 0, endColumnIndex: 6 },
+              cell: { userEnteredFormat: {
+                backgroundColor: { red: 0, green: 0.125, blue: 0.376 },
+                textFormat: { bold: true, foregroundColor: { red: 1, green: 1, blue: 1 } }
+              }},
+              fields: 'userEnteredFormat(backgroundColor,textFormat)'
             }
           },
           {
-             // Borders on all cells (rows 1–1000)
-             repeatCell: {
-               range: { sheetId: sheetId, startRowIndex: 0, endRowIndex: 1000, startColumnIndex: 0, endColumnIndex: 6 },
-               cell: { userEnteredFormat: { borders: {
-                  top:    { style: 'SOLID', width: 1, color: { red: 0.6, green: 0.6, blue: 0.6 } },
-                  bottom: { style: 'SOLID', width: 1, color: { red: 0.6, green: 0.6, blue: 0.6 } },
-                  left:   { style: 'SOLID', width: 1, color: { red: 0.6, green: 0.6, blue: 0.6 } },
-                  right:  { style: 'SOLID', width: 1, color: { red: 0.6, green: 0.6, blue: 0.6 } }
-                }}},
-                fields: 'userEnteredFormat.borders'
-               }
-              }
-             ]
-           })
+            // Rows 2+ (index 1+): white background, black text
+            repeatCell: {
+              range: { sheetId, startRowIndex: 1, endRowIndex: 1000, startColumnIndex: 0, endColumnIndex: 6 },
+              cell: { userEnteredFormat: {
+                backgroundColor: { red: 1, green: 1, blue: 1 },
+                textFormat: { bold: false, foregroundColor: { red: 0, green: 0, blue: 0 } }
+              }},
+              fields: 'userEnteredFormat(backgroundColor,textFormat)'
+            }
+          },
+          {
+            // Barcode column (A) as plain text — preserves leading zeros
+            repeatCell: {
+              range: { sheetId, startRowIndex: 1, endRowIndex: 1000, startColumnIndex: 0, endColumnIndex: 1 },
+              cell: { userEnteredFormat: { numberFormat: { type: 'TEXT' } } },
+              fields: 'userEnteredFormat.numberFormat'
+            }
+          },
+          {
+            // Price column (E) as currency
+            repeatCell: {
+              range: { sheetId, startRowIndex: 1, endRowIndex: 1000, startColumnIndex: 4, endColumnIndex: 5 },
+              cell: { userEnteredFormat: { numberFormat: { type: 'CURRENCY', pattern: '"$"#,##0.00' } } },
+              fields: 'userEnteredFormat.numberFormat'
+            }
+          },
+          {
+            // Borders on all cells rows 1-1000
+            repeatCell: {
+              range: { sheetId, startRowIndex: 0, endRowIndex: 1000, startColumnIndex: 0, endColumnIndex: 6 },
+              cell: { userEnteredFormat: { borders: {
+                top: solidBorder(grey), bottom: solidBorder(grey),
+                left: solidBorder(grey), right: solidBorder(grey)
+              }}},
+              fields: 'userEnteredFormat.borders'
+            }
           }
+        ]})
+      }
     );
-    console.log('[Formatting] Column formats applied successfully');
+    console.log('[Formatting] Applied successfully');
   } catch (e) {
     console.warn('[Formatting] Skipped (cosmetic only):', e.message);
   }
@@ -430,11 +439,8 @@ async function runFullSetup() {
 
 async function createSheet() {
   const boldHeader = (label) => ({
-  userEnteredValue: { stringValue: label },
-  userEnteredFormat: {
-    textFormat: { bold: true, foregroundColor: { red: 1, green: 1, blue: 1 } },
-    backgroundColor: { red: 0, green: 0.125, blue: 0.376 }
-    }
+    userEnteredValue: { stringValue: label },
+    userEnteredFormat: { textFormat: { bold: true }, backgroundColor: { red: 0.118, green: 0.165, blue: 0.278 } }
   });
   const res = await gapi('https://sheets.googleapis.com/v4/spreadsheets', 'POST', {
     properties: { title: 'Inventory Scanner — My Stock' },
@@ -624,18 +630,49 @@ function stopScan() {
   document.getElementById('video-wrap').style.display = 'none';
 }
 
+let lastCode = null;
+let codeCount = 0;
+const CONFIRM_READS = 3; // require N identical reads before accepting
+
 async function scanLoop() {
   if (!scanning) return;
   try {
     const codes = await detector.detect(document.getElementById('video'));
     if (codes.length > 0) {
       const code = codes[0].rawValue;
-      document.getElementById('barcode').value = code;
-      stopScan();
-      document.getElementById('scanBtn').textContent = '📷 Scan Barcode';
-      setStatus('cameraStatus', 'Scanned: ' + code + ' — looking up...', 'info');
-      lookupBarcode(code);
-      return;
+      const fmt  = codes[0].format || '';
+
+      // Validate expected barcode lengths to filter out nearby printed numbers
+      const len = code.replace(/[^0-9]/g, '').length;
+      const validLengths = { ean_13: 13, ean_8: 8, upc_a: 12, upc_e: 8 };
+      if (validLengths[fmt] && len !== validLengths[fmt]) {
+        requestAnimationFrame(scanLoop);
+        return;
+      }
+
+      // Require CONFIRM_READS identical reads in a row
+      if (code === lastCode) {
+        codeCount++;
+      } else {
+        lastCode = code;
+        codeCount = 1;
+      }
+
+      const pct = Math.round((codeCount / CONFIRM_READS) * 100);
+      setStatus('cameraStatus', 'Confirming scan... ' + pct + '%', 'info');
+
+      if (codeCount >= CONFIRM_READS) {
+        lastCode = null; codeCount = 0;
+        document.getElementById('barcode').value = code;
+        stopScan();
+        document.getElementById('scanBtn').textContent = '📷 Scan Barcode';
+        setStatus('cameraStatus', 'Scanned: ' + code + ' (' + (fmt || 'barcode') + ') — looking up...', 'info');
+        lookupBarcode(code);
+        return;
+      }
+    } else {
+      // Reset streak if nothing detected
+      lastCode = null; codeCount = 0;
     }
   } catch(e) {}
   requestAnimationFrame(scanLoop);
