@@ -303,22 +303,48 @@ async function applySheetFormatting(spreadsheetId, token) {
         body: JSON.stringify({
           requests: [
             {
+              // Barcode column as plain text
               repeatCell: {
                 range: { sheetId: sheetId, startRowIndex: 1, startColumnIndex: 0, endColumnIndex: 1 },
                 cell: { userEnteredFormat: { numberFormat: { type: 'TEXT' } } },
                 fields: 'userEnteredFormat.numberFormat'
-              }
-            },
-            {
+             }
+          },
+          {
+            // Price column as currency
               repeatCell: {
                 range: { sheetId: sheetId, startRowIndex: 1, startColumnIndex: 4, endColumnIndex: 5 },
                 cell: { userEnteredFormat: { numberFormat: { type: 'CURRENCY', pattern: '"$"#,##0.00' } } },
                 fields: 'userEnteredFormat.numberFormat'
-              }
+             }
+          },
+          {
+             // Data rows — white background, black text
+             repeatCell: {
+               range: { sheetId: sheetId, startRowIndex: 1, endRowIndex: 1000, startColumnIndex: 0, endColumnIndex: 6 },
+               cell: { userEnteredFormat: {
+               backgroundColor: { red: 1, green: 1, blue: 1 },
+               textFormat: { foregroundColor: { red: 0, green: 0, blue: 0 } }
+             }},
+             fields: 'userEnteredFormat(backgroundColor,textFormat.foregroundColor)'
             }
-          ]
-        })
-      }
+          },
+          {
+             // Borders on all cells (rows 1–1000)
+             repeatCell: {
+               range: { sheetId: sheetId, startRowIndex: 0, endRowIndex: 1000, startColumnIndex: 0, endColumnIndex: 6 },
+               cell: { userEnteredFormat: { borders: {
+                  top:    { style: 'SOLID', width: 1, color: { red: 0.6, green: 0.6, blue: 0.6 } },
+                  bottom: { style: 'SOLID', width: 1, color: { red: 0.6, green: 0.6, blue: 0.6 } },
+                  left:   { style: 'SOLID', width: 1, color: { red: 0.6, green: 0.6, blue: 0.6 } },
+                  right:  { style: 'SOLID', width: 1, color: { red: 0.6, green: 0.6, blue: 0.6 } }
+                }}},
+                fields: 'userEnteredFormat.borders'
+               }
+              }
+             ]
+           })
+          }
     );
     console.log('[Formatting] Column formats applied successfully');
   } catch (e) {
@@ -404,8 +430,11 @@ async function runFullSetup() {
 
 async function createSheet() {
   const boldHeader = (label) => ({
-    userEnteredValue: { stringValue: label },
-    userEnteredFormat: { textFormat: { bold: true }, backgroundColor: { red: 0.118, green: 0.165, blue: 0.278 } }
+  userEnteredValue: { stringValue: label },
+  userEnteredFormat: {
+    textFormat: { bold: true, foregroundColor: { red: 1, green: 1, blue: 1 } },
+    backgroundColor: { red: 0, green: 0.125, blue: 0.376 }
+    }
   });
   const res = await gapi('https://sheets.googleapis.com/v4/spreadsheets', 'POST', {
     properties: { title: 'Inventory Scanner — My Stock' },
