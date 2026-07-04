@@ -1,5 +1,5 @@
 /* Inventory Scanner — Service Worker isc-v5 */
-const CACHE   = 'isc-v6';
+const CACHE   = 'isc-v7';
 const STATIC  = [
   '/ISC/manifest.json',
   '/ISC/icons/icon-192.png',
