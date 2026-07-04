@@ -621,21 +621,25 @@ function openSheet(e) {
   const isAndroid = /android/i.test(ua);
 
   if (isAndroid && S.spreadsheetId) {
-    // intent:// URL opens the Sheets app directly on Android Chrome.
-    // S.browser_fallback_url ensures a graceful web fallback if not installed.
+    // Android intent:// URL — host must be in the path (not as a parameter)
+    // so Android knows which App Link handler to invoke.
+    // scheme=https tells Android this resolves to an https URL.
+    // package= targets Google Sheets specifically.
+    // S.browser_fallback_url= is the graceful fallback if Sheets isn't installed.
     const fallback = encodeURIComponent(url);
-    const intent = 'intent://spreadsheets/d/' + S.spreadsheetId +
+    const intent =
+      'intent://docs.google.com/spreadsheets/d/' + S.spreadsheetId +
       '#Intent' +
-      ';package=com.google.android.apps.sheets' +
       ';scheme=https' +
-      ';host=docs.google.com' +
+      ';package=com.google.android.apps.sheets' +
       ';S.browser_fallback_url=' + fallback +
       ';end';
     window.location.href = intent;
     return;
   }
 
-  // iOS universal links and desktop — regular URL handled by OS/browser
+  // iOS: universal links route docs.google.com URLs to Sheets app automatically.
+  // Desktop: opens a new tab.
   window.open(url, '_blank', 'noopener');
 }
 
