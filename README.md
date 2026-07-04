@@ -1,6 +1,6 @@
 # 📦 Inventory Scanner
 
-A mobile-first Progressive Web App for real-time inventory control. Scan barcodes with your phone camera, look up product info automatically, and track stock that syncs live to a Google Sheet — with a full audit log, offline support, and low stock alerts. 
+A mobile-first Progressive Web App for real-time inventory control. Scan barcodes with your phone camera, look up product info automatically, and track stock that syncs live to a Google Sheet — with a full audit log, offline support, and low stock alerts.
 
 [![Live App](https://img.shields.io/badge/Live%20App-GitHub%20Pages-22c55e?style=flat-square)](https://xwxexixrxdxox-spec.github.io/ISC/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue?style=flat-square)](./LICENSE)
