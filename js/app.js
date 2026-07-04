@@ -154,13 +154,46 @@ function ensureToken() {
   });
 }
 
+/* ─── Find Existing Sheet ───────────────────────────────────────────────── */
+// Searches the user's Drive for an existing Inventory Scanner sheet.
+// Called before createSheet() so re-authentication always reconnects
+// to the same sheet rather than creating a new one.
+async function findExistingSheet() {
+  const q = encodeURIComponent(
+    "name='Inventory Scanner — My Stock' " +
+    "and mimeType='application/vnd.google-apps.spreadsheet' " +
+    "and trashed=false"
+  );
+  const res = await fetch(
+    'https://www.googleapis.com/drive/v3/files?q=' + q +
+    '&fields=files(id,name,modifiedTime)&orderBy=modifiedTime%20desc&pageSize=1',
+    { headers: { 'Authorization': 'Bearer ' + S.accessToken } }
+  );
+  if (!res.ok) return null;
+  const data = await res.json();
+  return (data.files && data.files.length > 0) ? data.files[0] : null;
+}
+
 /* ─── Setup Flow ────────────────────────────────────────────────────────── */
 async function runFullSetup() {
   show('screen-setup');
   try {
-    log('Creating your Google Sheet…', 30);
-    const spreadsheetId = await createSheet();
-    logLine('✓ Sheet created with formatting');
+    // Search for an existing sheet first. This ensures re-authentication
+    // after token expiry or Reset always reconnects to the SAME sheet
+    // instead of accidentally creating a new one.
+    log('Looking for your existing sheet…', 20);
+    const existing = await findExistingSheet();
+
+    let spreadsheetId;
+    if (existing) {
+      spreadsheetId = existing.id;
+      log('Reconnecting to your sheet…', 60);
+      logLine('✓ Found your existing sheet');
+    } else {
+      log('Creating your Google Sheet…', 40);
+      spreadsheetId = await createSheet();
+      logLine('✓ Sheet created with formatting');
+    }
 
     log('Finalising connection…', 90);
     const sheetUrl = 'https://docs.google.com/spreadsheets/d/' + spreadsheetId;
@@ -171,7 +204,9 @@ async function runFullSetup() {
     logLine('✓ App connected to your sheet');
 
     log('All done!', 100);
-    setStatus('setupStatus', '🎉 Your inventory system is ready!', 'ok');
+    setStatus('setupStatus',
+      existing ? '✅ Reconnected to your existing sheet!' : '🎉 Your inventory system is ready!',
+      'ok');
     setTimeout(() => { show('screen-main'); initMain(); }, 1500);
 
   } catch (e) {
@@ -532,7 +567,16 @@ function initMain() {
   $('sheetLinkFull').href = S.sheetUrl;
 
   $('resetBtn').addEventListener('click', () => {
-    if (confirm('Disconnect your sheet? You can reconnect anytime.')) {
+    // Re-authenticate keeps the same sheet — use 'Start fresh' for a new one
+    if (confirm('Re-authenticate with Google?\n\nThis will sign you back in and reconnect to your existing sheet. Your data is safe.')) {
+      S.accessToken = null;
+      // Keep sheetUrl + spreadsheetId so we reconnect, not recreate
+      location.reload();
+    }
+  });
+
+  $('freshBtn').addEventListener('click', () => {
+    if (confirm('Start fresh?\n\nThis disconnects from your current sheet. You can always reconnect by signing in again — your old sheet stays in Google Drive.')) {
       ['sheetUrl','spreadsheetId','offlineQueue','minQty'].forEach(k => localStorage.removeItem(k));
       location.reload();
     }
