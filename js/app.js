@@ -85,29 +85,61 @@ function init() {
 
 /* ─── Welcome Screen: Sign In ───────────────────────────────────────────────────────────────── */
 $('connectGoogleBtn').addEventListener('click', () => {
+  if (!window.google || !window.google.accounts || !window.google.accounts.oauth2) {
+    setStatus('connectStatus', 'Still loading Google services — please wait a moment and try again.', 'warn');
+    return;
+  }
+  const btn = $('connectGoogleBtn');
+  btn.disabled = true;
+  btn.innerHTML = 'Connecting…';
   setStatus('connectStatus', 'Opening Google sign-in…', 'info');
-  requestToken(runFullSetup);
+  try {
+    requestToken(runFullSetup);
+  } catch (e) {
+    setStatus('connectStatus', 'Sign-in failed: ' + e.message, 'err');
+    btn.disabled = false;
+    btn.innerHTML = '<span style="font-size:1.1rem;">G</span> &nbsp;Sign in with Google';
+  }
 });
 });
 
+function resetSignInBtn() {
+  const btn = $('connectGoogleBtn');
+  if (btn) {
+    btn.disabled = false;
+    btn.innerHTML = '<span style="font-size:1.1rem;">G</span> &nbsp;Sign in with Google';
+  }
+}
+
 function requestToken(callback) {
-  const client = google.accounts.oauth2.initTokenClient({
-    client_id: CLIENT_ID,
-    scope: [
-      'https://www.googleapis.com/auth/spreadsheets',
-      'https://www.googleapis.com/auth/drive',
-    ].join(' '),
-    callback: resp => {
-      if (resp.error) {
-        setStatus('connectStatus', 'Sign-in failed: ' + resp.error, 'err');
-        return;
+  try {
+    const client = google.accounts.oauth2.initTokenClient({
+      client_id: CLIENT_ID,
+      scope: [
+        'https://www.googleapis.com/auth/spreadsheets',
+        'https://www.googleapis.com/auth/drive',
+      ].join(' '),
+      callback: resp => {
+        if (resp.error) {
+          const msg = resp.error === 'popup_closed_by_user'
+            ? 'Sign-in window was closed — tap the button again.'
+            : resp.error === 'access_denied'
+            ? 'Access was denied. Please allow the required permissions.'
+            : 'Sign-in failed: ' + resp.error;
+          setStatus('connectStatus', msg, 'err');
+          resetSignInBtn();
+          return;
+        }
+        S.accessToken = resp.access_token;
+        scheduleTokenRefresh();
+        callback();
       }
-      S.accessToken = resp.access_token;
-      scheduleTokenRefresh();
-      callback();
-    }
-  });
-  client.requestAccessToken({ prompt: 'consent' });
+    });
+    client.requestAccessToken({ prompt: 'consent' });
+  } catch (e) {
+    setStatus('connectStatus', 'Could not open sign-in: ' + e.message, 'err');
+    resetSignInBtn();
+  }
 }
 
 /* ─── Auth: Background Token Refresh ───────────────────────────────────── */
@@ -848,13 +880,34 @@ function saveMinQty(barcode, val) {
 
 /* ─── Boot ──────────────────────────────────────────────────────────────── */
 window.addEventListener('load', () => {
+  // Disable sign-in button until GIS is fully ready
+  const btn = $('connectGoogleBtn');
+  if (btn) {
+    btn.disabled = true;
+    btn.innerHTML = '<span style="font-size:1.1rem;">G</span> &nbsp;Loading…';
+  }
+
   const wait = setInterval(() => {
-    if (window.google && window.google.accounts) {
+    if (window.google && window.google.accounts && window.google.accounts.oauth2) {
       clearInterval(wait);
+      // Re-enable button now that GIS is ready
+      if (btn) {
+        btn.disabled = false;
+        btn.innerHTML = '<span style="font-size:1.1rem;">G</span> &nbsp;Sign in with Google';
+      }
       init();
     }
   }, 100);
-  setTimeout(() => { clearInterval(wait); init(); }, 6000);
+
+  // Fallback: if GIS never loads after 8s, show an error
+  setTimeout(() => {
+    clearInterval(wait);
+    if (!window.google || !window.google.accounts) {
+      if (btn) { btn.disabled = false; btn.innerHTML = '<span style="font-size:1.1rem;">G</span> &nbsp;Sign in with Google'; }
+      setStatus('connectStatus', 'Google services failed to load. Check your internet connection and refresh.', 'err');
+    }
+    init();
+  }, 8000);
 });
 
 if ('serviceWorker' in navigator) {
