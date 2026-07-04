@@ -209,21 +209,30 @@ async function findExistingSheet() {
 async function runFullSetup() {
   show('screen-setup');
   try {
-    // Search for an existing sheet first. This ensures re-authentication
-    // after token expiry or Reset always reconnects to the SAME sheet
-    // instead of accidentally creating a new one.
-    log('Looking for your existing sheet…', 20);
-    const existing = await findExistingSheet();
+    // Check if user explicitly requested a brand-new sheet (Start Fresh button).
+    // If so, skip the Drive search entirely so we don't reconnect to the old one.
+    const forceNew = sessionStorage.getItem('force-new-sheet') === '1';
+    sessionStorage.removeItem('force-new-sheet'); // consume immediately
 
     let spreadsheetId;
-    if (existing) {
-      spreadsheetId = existing.id;
-      log('Reconnecting to your sheet…', 60);
-      logLine('✓ Found your existing sheet');
-    } else {
-      log('Creating your Google Sheet…', 40);
+    if (forceNew) {
+      log('Creating a new Google Sheet…', 40);
       spreadsheetId = await createSheet();
-      logLine('✓ Sheet created with formatting');
+      logLine('✓ New sheet created with formatting');
+    } else {
+      // Normal sign-in: search Drive first so re-authentication reconnects
+      // to the same sheet instead of accidentally creating a new one.
+      log('Looking for your existing sheet…', 20);
+      const existing = await findExistingSheet();
+      if (existing) {
+        spreadsheetId = existing.id;
+        log('Reconnecting to your sheet…', 60);
+        logLine('✓ Found your existing sheet');
+      } else {
+        log('Creating your Google Sheet…', 40);
+        spreadsheetId = await createSheet();
+        logLine('✓ Sheet created with formatting');
+      }
     }
 
     log('Finalising connection…', 90);
@@ -235,9 +244,7 @@ async function runFullSetup() {
     logLine('✓ App connected to your sheet');
 
     log('All done!', 100);
-    setStatus('setupStatus',
-      existing ? '✅ Reconnected to your existing sheet!' : '🎉 Your inventory system is ready!',
-      'ok');
+    setStatus('setupStatus', '🎉 Ready!', 'ok');
     setTimeout(() => { show('screen-main'); initMain(); }, 1500);
 
   } catch (e) {
@@ -650,7 +657,8 @@ function initMain() {
   });
 
   $('freshBtn').addEventListener('click', () => {
-    if (confirm('Start fresh?\n\nThis disconnects from your current sheet. You can always reconnect by signing in again — your old sheet stays in Google Drive.')) {
+    if (confirm('Start fresh?\n\nThis creates a brand new sheet. Your old sheet stays safely in Google Drive and can be reconnected anytime by renaming it back to "Inventory Scanner — My Stock".')) {
+      sessionStorage.setItem('force-new-sheet', '1');
       ['sheetUrl','spreadsheetId','offlineQueue','minQty'].forEach(k => localStorage.removeItem(k));
       location.reload();
     }
