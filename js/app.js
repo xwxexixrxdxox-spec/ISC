@@ -297,7 +297,8 @@ async function createSheet() {
         properties: { title: 'Inventory', sheetId: 0 },
         data: [{ startRow: 0, startColumn: 0, rowData: [{ values: [
           header('Barcode'), header('Description'), header('Quantity'),
-          header('Unit'), header('Price'), header('Last Updated')
+          header('Unit'), header('Price'), header('Last Updated'),
+          header('Min Qty'), header('Max Qty')
         ]}]}]
       },
       {
@@ -324,7 +325,7 @@ async function createSheet() {
       // Data rows: white bg, black text (applied BEFORE data arrives so
       // OVERWRITE-mode appends inherit this, not the navy header)
       { repeatCell: {
-        range: { sheetId: invSheetId, startRowIndex: 1, endRowIndex: 5000, startColumnIndex: 0, endColumnIndex: 6 },
+        range: { sheetId: invSheetId, startRowIndex: 1, endRowIndex: 5000, startColumnIndex: 0, endColumnIndex: 8 },
         cell: { userEnteredFormat: { backgroundColor: white, textFormat: { bold: false, foregroundColor: black } } },
         fields: 'userEnteredFormat(backgroundColor,textFormat)'
       }},
@@ -342,7 +343,7 @@ async function createSheet() {
       }},
       // Borders: all cells in Inventory sheet
       { repeatCell: {
-        range: { sheetId: invSheetId, startRowIndex: 0, endRowIndex: 5000, startColumnIndex: 0, endColumnIndex: 6 },
+        range: { sheetId: invSheetId, startRowIndex: 0, endRowIndex: 5000, startColumnIndex: 0, endColumnIndex: 8 },
         cell: { userEnteredFormat: { borders: { top: solid(grey), bottom: solid(grey), left: solid(grey), right: solid(grey) } } },
         fields: 'userEnteredFormat.borders'
       }},
@@ -489,7 +490,7 @@ async function writeToSheet(payload, allowQueue = true) {
     return { queued: true };
   }
 
-  const sheetData = await sheetsRead(spreadsheetId, 'Inventory!A:F');
+  const sheetData = await sheetsRead(spreadsheetId, 'Inventory!A:H');
   const rows = sheetData.values || [[]];
 
   let rowIndex = -1;
@@ -501,9 +502,11 @@ async function writeToSheet(payload, allowQueue = true) {
   if (rowIndex === -1) {
     // New item
     newQty = Math.max(qtyChange, 0);
+    const t = getThreshold(barcode);
     await sheetsAppend(spreadsheetId, 'Inventory', [
       barcode, description, newQty, unit,
-      price !== '' ? parseFloat(price) : '', timestamp
+      price !== '' ? parseFloat(price) : '', timestamp,
+      t.min || '', t.max || ''
     ]);
   } else {
     // Existing item
@@ -517,6 +520,10 @@ async function writeToSheet(payload, allowQueue = true) {
     if (description && !rows[rowIndex][1]) updates.push({ range: 'Inventory!B' + r, values: [[description]] });
     if (unit       && !rows[rowIndex][3]) updates.push({ range: 'Inventory!D' + r, values: [[unit]] });
     if (price !== '' && !rows[rowIndex][4]) updates.push({ range: 'Inventory!E' + r, values: [[parseFloat(price)]] });
+    // Sync threshold columns G/H so sheet always reflects app settings
+    const t = getThreshold(barcode);
+    updates.push({ range: 'Inventory!G' + r, values: [[t.min || '']] });
+    updates.push({ range: 'Inventory!H' + r, values: [[t.max || '']] });
     await sheetsBatchUpdate(spreadsheetId, updates);
   }
 
@@ -895,9 +902,23 @@ async function loadInventoryView() {
   $('inv-loading').style.display = 'block';
   $('inv-list').innerHTML = '';
   try {
-    const data = await sheetsRead(S.spreadsheetId, 'Inventory!A:F');
+    const data = await sheetsRead(S.spreadsheetId, 'Inventory!A:H');
     const rows = (data.values || []).slice(1); // skip header
     S.inventoryCache = rows;
+
+    // Sync min/max thresholds from sheet columns G (index 6) and H (index 7)
+    // Sheet is the source of truth — this keeps all devices in sync
+    rows.forEach(r => {
+      const barcode = String(r[0]||'').trim();
+      if (!barcode) return;
+      const sheetMin = parseInt(r[6]) || 0;
+      const sheetMax = parseInt(r[7]) || 0;
+      if (sheetMin > 0 || sheetMax > 0) {
+        S.minQty[barcode] = { min: sheetMin, max: sheetMax };
+      }
+    });
+    localStorage.setItem('minQty', JSON.stringify(S.minQty));
+
     renderInventoryList(rows, $('inv-search').value.trim().toLowerCase());
     updateLowStockBadge();
   } catch (e) {
@@ -1051,6 +1072,29 @@ function openMinQtyModal(barcode, name, qty, currentMin) {
   $('minQtyInput').focus();
 }
 
+// Writes min/max threshold directly to sheet columns G and H.
+// Called from saveThreshold so the sheet is always the source of truth.
+async function writeThresholdToSheet(barcode, min, max) {
+  if (!S.spreadsheetId) return;
+  try {
+    await ensureToken();
+    const data = await sheetsRead(S.spreadsheetId, 'Inventory!A:A');
+    const rows = (data.values || []);
+    let rowIndex = -1;
+    for (let i = 1; i < rows.length; i++) {
+      if (String(rows[i][0]||'').trim() === barcode) { rowIndex = i + 1; break; }
+    }
+    if (rowIndex === -1) return; // not in sheet yet — columns G/H written on next stock scan
+    await sheetsBatchUpdate(S.spreadsheetId, [
+      { range: 'Inventory!G' + rowIndex, values: [[min > 0 ? min : '']] },
+      { range: 'Inventory!H' + rowIndex, values: [[max > 0 ? max : '']] }
+    ]);
+    console.log('[Threshold] Written to sheet row', rowIndex);
+  } catch (e) {
+    console.warn('[Threshold] Sheet write failed (saved locally):', e.message);
+  }
+}
+
 function saveThreshold(barcode, minVal, maxVal) {
   const min = parseInt(minVal, 10) || 0;
   const max = parseInt(maxVal, 10) || 0;
@@ -1063,6 +1107,8 @@ function saveThreshold(barcode, minVal, maxVal) {
   document.querySelector('.modal-backdrop')?.remove();
   renderInventoryList(S.inventoryCache, $('inv-search').value.trim().toLowerCase());
   updateLowStockBadge();
+  // Write to sheet in background — non-blocking so UI stays responsive
+  writeThresholdToSheet(barcode, min, max).catch(e => console.warn('[Threshold]', e.message));
 }
 
 // Keep backward compat alias
