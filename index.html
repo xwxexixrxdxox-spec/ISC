@@ -36,6 +36,16 @@
       <a href="./privacy-policy.html" target="_blank" style="color:var(--muted);font-size:0.78rem;text-decoration:none;">Privacy Policy</a>
     </p>
   </div>
+
+  <!-- Diagnostic panel — shows exactly what the app sees -->
+  <div id="diag-panel" style="margin-top:12px;background:#0f172a;border:1px solid #334155;border-radius:8px;padding:12px;font-size:0.72rem;font-family:monospace;color:#94a3b8;line-height:1.8;">
+    <div style="color:#f1f5f9;font-weight:bold;margin-bottom:6px;">Diagnostic (tap button after loading)</div>
+    <div id="diag-js">JS: <span style="color:#f59e0b;">checking…</span></div>
+    <div id="diag-gis">GIS: <span style="color:#f59e0b;">waiting…</span></div>
+    <div id="diag-origin">Origin: <span id="diag-origin-val"></span></div>
+    <div id="diag-clientid">Client ID: <span id="diag-cid-val"></span></div>
+    <div id="diag-error" style="color:#ef4444;display:none;"></div>
+  </div>
 </div>
 
 <!-- ─── SCREEN: Setting Up ────────────────────────────────────────────── -->

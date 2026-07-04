@@ -101,7 +101,6 @@ $('connectGoogleBtn').addEventListener('click', () => {
     btn.innerHTML = '<span style="font-size:1.1rem;">G</span> &nbsp;Sign in with Google';
   }
 });
-});
 
 function resetSignInBtn() {
   const btn = $('connectGoogleBtn');
@@ -880,7 +879,23 @@ function saveMinQty(barcode, val) {
 
 /* ─── Boot ──────────────────────────────────────────────────────────────── */
 window.addEventListener('load', () => {
-  // Disable sign-in button until GIS is fully ready
+  // ── Diagnostics ─────────────────────────────────────────────────────────
+  function diag(id, msg, color) {
+    const el = document.getElementById(id);
+    if (el) el.innerHTML = msg;
+    if (color && el) el.style.color = color;
+  }
+  function diagSet(selector, val) {
+    const el = document.getElementById(selector);
+    if (el) el.textContent = val;
+  }
+
+  // JS loaded
+  diag('diag-js', 'JS: <span style="color:#22c55e;">✓ Loaded (v isc-v5)</span>');
+  diagSet('diag-origin-val', window.location.origin);
+  diagSet('diag-cid-val', CLIENT_ID.slice(0,20) + '…');
+  // ── End diagnostics ──────────────────────────────────────────────────────
+
   const btn = $('connectGoogleBtn');
   if (btn) {
     btn.disabled = true;
@@ -890,7 +905,7 @@ window.addEventListener('load', () => {
   const wait = setInterval(() => {
     if (window.google && window.google.accounts && window.google.accounts.oauth2) {
       clearInterval(wait);
-      // Re-enable button now that GIS is ready
+      diag('diag-gis', 'GIS: <span style="color:#22c55e;">✓ Ready</span>');
       if (btn) {
         btn.disabled = false;
         btn.innerHTML = '<span style="font-size:1.1rem;">G</span> &nbsp;Sign in with Google';
@@ -899,12 +914,14 @@ window.addEventListener('load', () => {
     }
   }, 100);
 
-  // Fallback: if GIS never loads after 8s, show an error
   setTimeout(() => {
     clearInterval(wait);
     if (!window.google || !window.google.accounts) {
+      diag('diag-gis', 'GIS: <span style="color:#ef4444;">✗ Failed to load</span>');
+      const errEl = document.getElementById('diag-error');
+      if (errEl) { errEl.style.display='block'; errEl.textContent = 'Google Identity Services script did not load. Check internet connection.'; }
       if (btn) { btn.disabled = false; btn.innerHTML = '<span style="font-size:1.1rem;">G</span> &nbsp;Sign in with Google'; }
-      setStatus('connectStatus', 'Google services failed to load. Check your internet connection and refresh.', 'err');
+      setStatus('connectStatus', 'Google services failed to load. Check your connection and refresh.', 'err');
     }
     init();
   }, 8000);
