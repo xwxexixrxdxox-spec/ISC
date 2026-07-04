@@ -710,6 +710,7 @@ async function scanLoop() {
       }
 
       missCount = 0;
+      if (code !== lastCode) { hideVendorPanel(); } // clear old results when new barcode detected
       if (code === lastCode) { codeCount++; }
       else                   { lastCode = code; codeCount = 1; }
 
@@ -784,9 +785,108 @@ async function lookupBarcode(code) {
     setStatus('cameraStatus', found
       ? 'Found public data — review and adjust before saving.'
       : 'No public match — fill in the details below.', found ? 'ok' : 'info');
+
+    // Trigger vendor price lookup in parallel (non-blocking)
+    const productName = $('description').value.trim();
+    lookupVendorPrices(code, productName).catch(() => {});
+
   } catch (e) {
     setStatus('cameraStatus', 'Lookup failed — fill in details manually.', 'warn');
   }
+}
+
+/* ─── Vendor Price Lookup ───────────────────────────────────────────────── */
+// Uses UPCitemdb free trial API — 100 lookups/day, no key required.
+// Results cached in sessionStorage so repeated scans of the same barcode
+// don't burn through the daily limit.
+async function lookupVendorPrices(barcode, productName) {
+  const panel  = $('vendor-panel');
+  const list   = $('vendor-list');
+  const status = $('vendor-status');
+  const shopLink = $('vendor-shop-link');
+  if (!panel) return;
+
+  panel.style.display = 'block';
+  list.innerHTML = '<div style="padding:10px;color:var(--muted);font-size:0.8rem;">Searching vendors…</div>';
+  if (status) status.textContent = '';
+
+  // Build Google Shopping fallback link using product name or barcode
+  const searchQ = encodeURIComponent(productName || barcode);
+  if (shopLink) shopLink.href = 'https://www.google.com/search?tbm=shop&q=' + searchQ;
+
+  // Check sessionStorage cache first
+  const cacheKey = 'vp_' + barcode;
+  const cached = sessionStorage.getItem(cacheKey);
+  if (cached) {
+    renderVendorOffers(JSON.parse(cached), list, status, barcode);
+    return;
+  }
+
+  try {
+    const res  = await fetch('https://api.upcitemdb.com/prod/trial/lookup?upc=' + barcode);
+    const data = await res.json();
+
+    if (data.code && data.code !== 'OK') {
+      list.innerHTML = '<div style="padding:10px;color:var(--muted);font-size:0.8rem;">No vendor data — try the search link above.</div>';
+      return;
+    }
+
+    const item   = (data.items || [])[0] || {};
+    const offers = (item.offers || [])
+      .filter(o => parseFloat(o.price) > 0)
+      .map(o => ({
+        merchant:  o.merchant || 'Unknown',
+        price:     parseFloat(o.price),
+        shipping:  parseFloat(o.shipping) || 0,
+        total:     parseFloat(o.price) + (parseFloat(o.shipping) || 0),
+        condition: o.condition || 'new',
+        link:      o.link || null,
+      }))
+      .sort((a, b) => a.total - b.total)
+      .slice(0, 8);
+
+    sessionStorage.setItem(cacheKey, JSON.stringify(offers));
+    renderVendorOffers(offers, list, status, barcode);
+
+  } catch (e) {
+    list.innerHTML = '<div style="padding:10px;color:var(--muted);font-size:0.8rem;">Vendor lookup failed — check connection or try the search link above.</div>';
+  }
+}
+
+function renderVendorOffers(offers, list, status, barcode) {
+  if (!offers || !offers.length) {
+    list.innerHTML = '<div style="padding:10px;color:var(--muted);font-size:0.8rem;">No vendor listings found — try the search link above.</div>';
+    return;
+  }
+
+  list.innerHTML = offers.map((o, i) => {
+    const freeShip = o.shipping === 0 ? '<span class="vendor-item-ship">free ship</span>' : (o.shipping > 0 ? '<span class="vendor-item-ship">+$' + o.shipping.toFixed(2) + ' ship</span>' : '');
+    return `
+      <div class="vendor-item${i === 0 ? ' vendor-best' : ''}" onclick="selectVendorPrice(${o.price}, '${o.merchant.replace(/'/g,"\'")}')">
+        <span class="vendor-item-name">${i === 0 ? '🏆 ' : ''}${o.merchant}</span>
+        <span class="vendor-item-cond">${o.condition}</span>
+        <div style="text-align:right;">
+          <span class="vendor-item-price">$${o.price.toFixed(2)}</span>
+          ${freeShip}
+        </div>
+      </div>`;
+  }).join('');
+
+  if (status) status.textContent = offers.length + ' vendor' + (offers.length !== 1 ? 's' : '') + ' found · sorted cheapest first';
+}
+
+function selectVendorPrice(price, merchant) {
+  const priceInput = $('price');
+  if (priceInput) priceInput.value = price.toFixed(2);
+  const priceTag = $('priceTag');
+  if (priceTag) priceTag.textContent = '(from ' + merchant + ')';
+}
+
+function hideVendorPanel() {
+  const panel = $('vendor-panel');
+  if (panel) panel.style.display = 'none';
+  const list = $('vendor-list');
+  if (list) list.innerHTML = '';
 }
 
 /* ─── Inventory List View ───────────────────────────────────────────────── */
@@ -812,6 +912,13 @@ async function loadInventoryView() {
   }
 }
 
+function getThreshold(barcode) {
+  const t = S.minQty[barcode];
+  if (!t) return { min: 0, max: 0 };
+  if (typeof t === 'object') return { min: t.min || 0, max: t.max || 0 };
+  return { min: t, max: 0 }; // legacy number format
+}
+
 function renderInventoryList(rows, filter) {
   const list = $('inv-list');
   const filtered = rows.filter(r => {
@@ -824,12 +931,12 @@ function renderInventoryList(rows, filter) {
     return;
   }
 
-  // Sort: low stock first, then alphabetical by description
+  // Sort: low stock first, then alphabetical
   filtered.sort((a, b) => {
     const aqty = Number(a[2]) || 0, bqty = Number(b[2]) || 0;
-    const amin = S.minQty[a[0]] || 0, bmin = S.minQty[b[0]] || 0;
-    const aLow = aqty <= amin && amin > 0;
-    const bLow = bqty <= bmin && bmin > 0;
+    const at = getThreshold(String(a[0]||'')), bt = getThreshold(String(b[0]||''));
+    const aLow = at.min > 0 && aqty <= at.min;
+    const bLow = bt.min > 0 && bqty <= bt.min;
     if (aLow && !bLow) return -1;
     if (!aLow && bLow) return 1;
     return String(a[1]||a[0]).localeCompare(String(b[1]||b[0]));
@@ -840,19 +947,33 @@ function renderInventoryList(rows, filter) {
     const name    = String(r[1] || barcode || '—');
     const qty     = Number(r[2]) || 0;
     const unit    = String(r[3] || '');
-    const min     = S.minQty[barcode] || 0;
-    const isLow   = min > 0 && qty <= min;
-    return `
-      <div class="inv-item" data-barcode="${barcode}" onclick="openMinQtyModal('${barcode}','${name.replace(/'/g,"\\'")}',${qty},${min})">
-        <div class="inv-item-left">
-          <div class="inv-item-name">${name}${isLow ? ' <span style="color:var(--red);font-size:0.75rem;">⚠ Low</span>' : ''}</div>
-          <div class="inv-item-bc">${barcode}</div>
-        </div>
-        <div class="inv-item-right">
-          <div class="inv-item-qty${isLow ? ' low' : ''}">${qty}</div>
-          <div class="inv-item-unit">${unit}</div>
-        </div>
-      </div>`;
+    const t       = getThreshold(barcode);
+    const isLow   = t.min > 0 && qty <= t.min;
+    const isMax   = t.max > 0 && qty >= t.max;
+    const reorder = (t.min > 0 && t.max > 0 && isLow) ? (t.max - qty) : null;
+
+    let badge = '';
+    if (isLow)       badge = ' <span style="color:var(--red);font-size:0.72rem;">⚠ Reorder</span>';
+    else if (isMax)  badge = ' <span style="color:var(--accent);font-size:0.72rem;">✓ Full</span>';
+
+    const thresholdInfo = [];
+    if (t.min > 0) thresholdInfo.push('min ' + t.min);
+    if (t.max > 0) thresholdInfo.push('max ' + t.max);
+    if (reorder !== null && reorder > 0) thresholdInfo.push('order ' + reorder + ' to restock');
+    const sub = barcode + (thresholdInfo.length ? ' · ' + thresholdInfo.join(' / ') : '');
+
+    return [
+      '<div class="inv-item' + (isLow ? ' low-item' : '') + '" data-barcode="' + barcode + '"',
+      ' onclick="openMinQtyModal(\'' + barcode + '\',\'' + name.replace(/\'/g, "\\\'") + '\',' + qty + ',' + t.min + ')">',
+      '<div class="inv-item-left">',
+      '<div class="inv-item-name">' + name + badge + '</div>',
+      '<div class="inv-item-bc">' + sub + '</div>',
+      '</div>',
+      '<div class="inv-item-right">',
+      '<div class="inv-item-qty' + (isLow ? ' low' : '') + '">' + qty + '</div>',
+      '<div class="inv-item-unit">' + unit + '</div>',
+      '</div></div>'
+    ].join('');
   }).join('');
 
   $('inv-count').textContent = filtered.length + ' item' + (filtered.length !== 1 ? 's' : '');
@@ -870,8 +991,8 @@ $('inv-refresh').addEventListener('click', () => {
 /* ─── Low Stock Alerts ──────────────────────────────────────────────────── */
 function updateLowStockBadge() {
   const count = S.inventoryCache.filter(r => {
-    const min = S.minQty[String(r[0]||'')] || 0;
-    return min > 0 && (Number(r[2]) || 0) <= min;
+    const t = getThreshold(String(r[0]||''));
+    return t.min > 0 && (Number(r[2]) || 0) <= t.min;
   }).length;
   const badge = $('low-stock-badge');
   if (badge) {
@@ -885,33 +1006,67 @@ function openMinQtyModal(barcode, name, qty, currentMin) {
   const existing = document.querySelector('.modal-backdrop');
   if (existing) existing.remove();
 
+  const thresholds = S.minQty[barcode] || {};
+  const curMin = typeof thresholds === 'object' ? (thresholds.min || 0) : (thresholds || 0);
+  const curMax = typeof thresholds === 'object' ? (thresholds.max || 0) : 0;
+
   const modal = document.createElement('div');
   modal.className = 'modal-backdrop';
   modal.innerHTML = `
     <div class="modal-sheet">
       <div class="modal-title">${name}</div>
       <div class="modal-sub">Barcode: ${barcode} · Current stock: ${qty}</div>
-      <label>Alert me when stock falls to or below:</label>
-      <input id="minQtyInput" type="number" min="0" value="${currentMin}" placeholder="0 = no alert">
-      <div class="row" style="margin-top:10px;">
+
+      <label>Reorder alert — alert when stock falls to or below:</label>
+      <input id="minQtyInput" type="number" min="0" value="${curMin}" placeholder="0 = no alert">
+
+      <label style="margin-top:10px;">Maximum stock — order up to this level:</label>
+      <input id="maxQtyInput" type="number" min="0" value="${curMax}" placeholder="0 = no maximum">
+
+      <div id="threshold-hint" style="font-size:0.72rem;color:var(--muted);margin-top:6px;line-height:1.5;"></div>
+
+      <div class="row" style="margin-top:12px;">
         <button class="btn-secondary btn-sm" onclick="this.closest('.modal-backdrop').remove()">Cancel</button>
-        <button class="btn-green btn-sm" onclick="saveMinQty('${barcode}', document.getElementById('minQtyInput').value)">Save Alert</button>
+        <button class="btn-green btn-sm" onclick="saveThreshold('${barcode}', $('minQtyInput').value, $('maxQtyInput').value)">Save</button>
       </div>
     </div>`;
   modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
   document.body.appendChild(modal);
+
+  // Live hint as user types
+  const updateHint = () => {
+    const min = parseInt($('minQtyInput').value, 10) || 0;
+    const max = parseInt($('maxQtyInput').value, 10) || 0;
+    const hint = $('threshold-hint');
+    if (!hint) return;
+    const parts = [];
+    if (min > 0) parts.push('Alert fires when stock ≤ ' + min);
+    if (max > 0 && min > 0) parts.push('Reorder quantity: ' + (max - min) + ' units (to reach max)');
+    else if (max > 0) parts.push('Max capacity: ' + max + ' units');
+    hint.textContent = parts.join(' · ');
+  };
+  $('minQtyInput').addEventListener('input', updateHint);
+  $('maxQtyInput').addEventListener('input', updateHint);
+  updateHint();
   $('minQtyInput').focus();
 }
 
-function saveMinQty(barcode, val) {
-  const n = parseInt(val, 10);
-  if (n > 0) S.minQty[barcode] = n;
-  else        delete S.minQty[barcode];
+function saveThreshold(barcode, minVal, maxVal) {
+  const min = parseInt(minVal, 10) || 0;
+  const max = parseInt(maxVal, 10) || 0;
+  if (min > 0 || max > 0) {
+    S.minQty[barcode] = { min, max };
+  } else {
+    delete S.minQty[barcode];
+  }
   localStorage.setItem('minQty', JSON.stringify(S.minQty));
   document.querySelector('.modal-backdrop')?.remove();
   renderInventoryList(S.inventoryCache, $('inv-search').value.trim().toLowerCase());
   updateLowStockBadge();
 }
+
+// Keep backward compat alias
+function saveMinQty(b, v) { saveThreshold(b, v, 0); }
 
 /* ─── Boot ──────────────────────────────────────────────────────────────── */
 window.addEventListener('load', () => {
