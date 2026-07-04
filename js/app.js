@@ -29,16 +29,18 @@
 })();
 
 /* ─── State ─────────────────────────────────────────────────────────────── */
+// ─── Developer Client ID (hardcoded — users never see this) ────────────
+const CLIENT_ID = '1003127305142-ucdql7nnag18sfkca159qi4v2nbaqiio.apps.googleusercontent.com';
+
 const S = {
-  clientId:      localStorage.getItem('gClientId')      || '',
-  sheetUrl:      localStorage.getItem('sheetUrl')       || '',
-  spreadsheetId: localStorage.getItem('spreadsheetId')  || '',
-  accessToken:   null,
-  tokenTimer:    null,      // handle for the 50-min refresh timer
-  offlineQueue:  JSON.parse(localStorage.getItem('offlineQueue') || '[]'),
-  minQty:        JSON.parse(localStorage.getItem('minQty')       || '{}'),
-  inventoryCache: [],       // last-loaded inventory rows for the list view
-  currentTab:    'scan',
+  sheetUrl:       localStorage.getItem('sheetUrl')      || '',
+  spreadsheetId:  localStorage.getItem('spreadsheetId') || '',
+  accessToken:    null,
+  tokenTimer:     null,
+  offlineQueue:   JSON.parse(localStorage.getItem('offlineQueue') || '[]'),
+  minQty:         JSON.parse(localStorage.getItem('minQty')       || '{}'),
+  inventoryCache: [],
+  currentTab:     'scan',
 };
 
 /* ─── Utilities ─────────────────────────────────────────────────────────── */
@@ -54,7 +56,7 @@ function saveQueue() {
 }
 
 /* ─── Screen Router ─────────────────────────────────────────────────────── */
-const SCREENS = ['screen-clientid','screen-connect','screen-setup','screen-main'];
+const SCREENS = ['screen-welcome','screen-setup','screen-main'];
 function show(id) {
   SCREENS.forEach(s => $(s).classList.add('hidden'));
   $(id).classList.remove('hidden');
@@ -78,35 +80,19 @@ function init() {
     if (m) { S.spreadsheetId = m[1]; localStorage.setItem('spreadsheetId', m[1]); }
   }
   if (S.spreadsheetId) { show('screen-main'); initMain(); return; }
-  if (S.clientId)       { show('screen-connect'); return; }
-  show('screen-clientid');
+  show('screen-welcome');
 }
 
-/* ─── Step 1: Client ID ─────────────────────────────────────────────────── */
-$('clientIdInput').value = S.clientId;
-
-$('saveClientIdBtn').addEventListener('click', () => {
-  const val = $('clientIdInput').value.trim();
-  if (!val.includes('.apps.googleusercontent.com')) {
-    setStatus('clientIdStatus', 'That doesn\'t look right — Client ID should end in .apps.googleusercontent.com', 'err');
-    return;
-  }
-  S.clientId = val;
-  localStorage.setItem('gClientId', val);
-  show('screen-connect');
-});
-
-$('backToClientIdBtn').addEventListener('click', () => show('screen-clientid'));
-
-/* ─── Step 2: Connect Google ────────────────────────────────────────────── */
+/* ─── Welcome Screen: Sign In ───────────────────────────────────────────────────────────────── */
 $('connectGoogleBtn').addEventListener('click', () => {
   setStatus('connectStatus', 'Opening Google sign-in…', 'info');
   requestToken(runFullSetup);
 });
+});
 
 function requestToken(callback) {
   const client = google.accounts.oauth2.initTokenClient({
-    client_id: S.clientId,
+    client_id: CLIENT_ID,
     scope: [
       'https://www.googleapis.com/auth/spreadsheets',
       'https://www.googleapis.com/auth/drive',
@@ -132,9 +118,8 @@ function scheduleTokenRefresh() {
 }
 
 function silentTokenRefresh() {
-  if (!S.clientId) return;
   const client = google.accounts.oauth2.initTokenClient({
-    client_id: S.clientId,
+    client_id: CLIENT_ID,
     scope: [
       'https://www.googleapis.com/auth/spreadsheets',
       'https://www.googleapis.com/auth/drive',
@@ -155,7 +140,7 @@ function ensureToken() {
   if (S.accessToken) return Promise.resolve();
   return new Promise(resolve => {
     const client = google.accounts.oauth2.initTokenClient({
-      client_id: S.clientId,
+      client_id: CLIENT_ID,
       scope: [
         'https://www.googleapis.com/auth/spreadsheets',
         'https://www.googleapis.com/auth/drive',
@@ -212,7 +197,7 @@ function handleSetupError(msg) {
   $('setupStatus').innerHTML = `
     <div class="status err">❌ ${msg || 'Unknown error'}</div>
     <button class="btn-secondary" id="retryGenBtn" style="margin-top:8px;">← Go Back & Retry</button>`;
-  $('retryGenBtn').addEventListener('click', () => show('screen-connect'));
+  $('retryGenBtn').addEventListener('click', () => show('screen-welcome'));
 }
 
 function log(msg, pct) {
@@ -548,7 +533,7 @@ function initMain() {
 
   $('resetBtn').addEventListener('click', () => {
     if (confirm('Disconnect your sheet? You can reconnect anytime.')) {
-      ['sheetUrl','spreadsheetId','gClientId','offlineQueue','minQty'].forEach(k => localStorage.removeItem(k));
+      ['sheetUrl','spreadsheetId','offlineQueue','minQty'].forEach(k => localStorage.removeItem(k));
       location.reload();
     }
   });

@@ -17,58 +17,25 @@
 <!-- Offline / sync indicator bar -->
 <div id="offline-bar"></div>
 
-<!-- ─── SCREEN: Client ID Setup ───────────────────────────────────────── -->
-<div id="screen-clientid">
-  <div style="margin-bottom:16px;">
-    <span class="tag">First-time setup · Step 1 of 2</span>
-    <h1>📦 Inventory Scanner</h1>
-    <p>To auto-create your Google Sheet and connect everything, you need a Google Cloud Client ID. This is a one-time setup (~10 minutes).</p>
+<!-- ─── SCREEN: Welcome / Sign In ─────────────────────────────────────── -->
+<div id="screen-welcome">
+  <div style="text-align:center;padding:48px 0 32px;">
+    <div style="font-size:4rem;line-height:1;margin-bottom:12px;">📦</div>
+    <h1 style="font-size:1.8rem;margin-bottom:8px;">Inventory Scanner</h1>
+    <p style="max-width:280px;margin:0 auto;">Scan barcodes, track stock in real time, sync to your own Google Sheet — automatically.</p>
   </div>
   <div class="card">
-    <h2>Get your Client ID</h2>
-    <div class="step">
-      <div class="step-num">1</div>
-      <div class="step-text">Go to <b>console.cloud.google.com</b> → create a new project</div>
-    </div>
-    <div class="step">
-      <div class="step-num">2</div>
-      <div class="step-text">APIs &amp; Services → Library → enable: <b>Google Sheets API</b>, <b>Google Drive API</b></div>
-    </div>
-    <div class="step">
-      <div class="step-num">3</div>
-      <div class="step-text">Credentials → Create Credentials → <b>OAuth Client ID</b> → type: <b>Web application</b></div>
-    </div>
-    <div class="step">
-      <div class="step-num">4</div>
-      <div class="step-text">Under "Authorized JavaScript origins" add: <b>https://xwxexixrxdxox-spec.github.io</b></div>
-    </div>
-    <div class="step">
-      <div class="step-num">5</div>
-      <div class="step-text">Copy the <b>Client ID</b> (ends in .apps.googleusercontent.com) and paste below</div>
-    </div>
-    <label for="clientIdInput">Google Cloud Client ID</label>
-    <input id="clientIdInput" placeholder="xxxx.apps.googleusercontent.com" autocomplete="off" spellcheck="false">
-    <button class="btn-primary" id="saveClientIdBtn">Save &amp; Continue →</button>
-    <div id="clientIdStatus"></div>
-  </div>
-</div>
-
-<!-- ─── SCREEN: Connect Google Account ────────────────────────────────── -->
-<div id="screen-connect" class="hidden">
-  <div style="margin-bottom:16px;">
-    <span class="tag">First-time setup · Step 2 of 2</span>
-    <h1>📦 Inventory Scanner</h1>
-    <p>Sign in with Google to auto-create your inventory sheet and connect everything. Takes about 30 seconds.</p>
-  </div>
-  <div class="card">
-    <h2>What will be created</h2>
-    <div class="step"><div class="step-num done">✓</div><div class="step-text"><b>Google Sheet</b> with Inventory + History (audit log) tabs</div></div>
-    <div class="step"><div class="step-num done">✓</div><div class="step-text"><b>Navy header row</b>, white data rows, grey borders, currency formatting</div></div>
-    <div class="step"><div class="step-num done">✓</div><div class="step-text">App connects directly — <b>no manual URL copying</b></div></div>
-    <button class="btn-green" id="connectGoogleBtn">🔗 Connect Google Account</button>
+    <div class="step"><div class="step-num done">✓</div><div class="step-text">Your <b>Google Sheet</b> is created automatically — nothing to configure</div></div>
+    <div class="step"><div class="step-num done">✓</div><div class="step-text">Data stays in <b>your own Google Drive</b> — we never see it</div></div>
+    <div class="step"><div class="step-num done">✓</div><div class="step-text">Works <b>offline</b> — scans queue and sync when connection returns</div></div>
+    <button class="btn-green" id="connectGoogleBtn" style="margin-top:16px;font-size:1.05rem;padding:15px;">
+      <span style="font-size:1.1rem;">G</span> &nbsp;Sign in with Google
+    </button>
     <div id="connectStatus"></div>
+    <p style="text-align:center;margin-top:14px;margin-bottom:0;">
+      <a href="./privacy-policy.html" target="_blank" style="color:var(--muted);font-size:0.78rem;text-decoration:none;">Privacy Policy</a>
+    </p>
   </div>
-  <button class="btn-outline" id="backToClientIdBtn" style="margin-top:0;">← Back</button>
 </div>
 
 <!-- ─── SCREEN: Setting Up ────────────────────────────────────────────── -->
