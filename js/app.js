@@ -593,9 +593,45 @@ $('addBtn').addEventListener('click', () => submitChange('add'));
 $('subBtn').addEventListener('click', () => submitChange('subtract'));
 
 /* ─── Main Screen Init ──────────────────────────────────────────────────── */
+// ─── Smart Sheet Opener ─────────────────────────────────────────────────────
+// On Android: tries intent:// URL which opens the Sheets app directly if
+// installed, and falls back to the browser URL if not.
+// On iOS: uses the regular URL — universal links open Sheets app automatically.
+// Desktop: opens a new browser tab.
+function openSheet(e) {
+  e.preventDefault();
+  const url = S.sheetUrl;
+  if (!url) return;
+
+  const ua = navigator.userAgent || '';
+  const isAndroid = /android/i.test(ua);
+
+  if (isAndroid && S.spreadsheetId) {
+    // intent:// URL opens the Sheets app directly on Android Chrome.
+    // S.browser_fallback_url ensures a graceful web fallback if not installed.
+    const fallback = encodeURIComponent(url);
+    const intent = 'intent://spreadsheets/d/' + S.spreadsheetId +
+      '#Intent' +
+      ';package=com.google.android.apps.sheets' +
+      ';scheme=https' +
+      ';host=docs.google.com' +
+      ';S.browser_fallback_url=' + fallback +
+      ';end';
+    window.location.href = intent;
+    return;
+  }
+
+  // iOS universal links and desktop — regular URL handled by OS/browser
+  window.open(url, '_blank', 'noopener');
+}
+
 function initMain() {
-  $('sheetLink').href     = S.sheetUrl;
-  $('sheetLinkFull').href = S.sheetUrl;
+  // Make sheet links use the smart opener instead of plain href
+  [$('sheetLink'), $('sheetLinkFull')].forEach(el => {
+    if (!el) return;
+    el.href = S.sheetUrl || '#';
+    el.addEventListener('click', openSheet);
+  });
 
   $('resetBtn').addEventListener('click', () => {
     // Re-authenticate keeps the same sheet — use 'Start fresh' for a new one
