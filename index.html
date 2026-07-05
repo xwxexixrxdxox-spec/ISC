@@ -224,10 +224,11 @@
 <!-- ─── Undo toast ──────────────────────────────────────────────────────── -->
 <div id="undo-toast" class="hidden" role="alert" aria-live="polite">
   <div style="flex:1;">
-    <div class="undo-toast-msg" id="undo-msg">Last change undone</div>
-    <div class="undo-toast-bar"><div class="undo-toast-progress" id="undo-progress" style="width:100%"></div></div>
+    <div class="undo-toast-msg" id="undo-msg">Saved</div>
   </div>
-  <button class="undo-btn" id="undo-btn" aria-label="Undo last stock change">↩ Undo</button>
+  <button class="undo-btn" id="undo-btn" aria-label="Undo in Google Sheets">Undo in Sheets</button>
+  <button id="undo-dismiss" aria-label="Dismiss"
+    style="background:none;border:none;color:#94a3b8;font-size:1.1rem;cursor:pointer;padding:4px 6px;margin-left:4px;width:auto;margin-top:0;">&#x2715;</button>
 </div>
 
 <!-- ─── Install banner ──────────────────────────────────────────────────── -->
