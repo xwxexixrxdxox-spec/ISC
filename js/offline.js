@@ -3,7 +3,7 @@
  * All stock changes flow through writeToSheet regardless of online status.
  */
 
-import { S, saveQueue }              from './state.js';
+import { S, saveQueue, getThreshold } from './state.js';
 import { sheetsRead, sheetsAppend, sheetsBatchUpdate } from './api.js';
 import { ensureToken }               from './auth.js';
 
@@ -71,8 +71,7 @@ export async function writeToSheet(payload, allowQueue = true) {
     if (String(rows[i][0] || '').trim() === barcode) { rowIndex = i; break; }
   }
 
-  // Import threshold getter lazily to avoid circular dependency
-  const { getThreshold } = await import('./inventory.js');
+  // getThreshold imported from state.js — no circular dep
   const t = getThreshold(barcode);
 
   let newQty;

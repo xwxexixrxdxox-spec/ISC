@@ -18,6 +18,15 @@ export const S = {
   _invSheetId:    null,   // cached after first applyRowFormatting call
 };
 
+/** Read min/max thresholds for a barcode. Handles legacy number format. */
+export function getThreshold(barcode) {
+  const S_obj = S; // reference the module-level S
+  const t = S_obj.minQty[barcode];
+  if (!t)                    return { min: 0, max: 0 };
+  if (typeof t === 'object') return { min: t.min || 0, max: t.max || 0 };
+  return { min: t, max: 0 };
+}
+
 export function saveQueue() {
   localStorage.setItem('offlineQueue', JSON.stringify(S.offlineQueue));
 }

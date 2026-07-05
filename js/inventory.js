@@ -3,20 +3,13 @@
  * inline buttons, and the edit item modal.
  */
 
-import { S }                           from './state.js';
+import { S, getThreshold }             from './state.js';
 import { $, setStatus }                from './utils.js';
 import { sheetsRead, sheetsBatchUpdate } from './api.js';
 import { ensureToken }                 from './auth.js';
 import { writeToSheet }                from './offline.js';
 
-/** ── Threshold helpers ─────────────────────────────────────────────────── */
-
-export function getThreshold(barcode) {
-  const t = S.minQty[barcode];
-  if (!t)                   return { min: 0, max: 0 };
-  if (typeof t === 'object') return { min: t.min || 0, max: t.max || 0 };
-  return { min: t, max: 0 }; // legacy number format
-}
+// getThreshold lives in state.js — imported from there to avoid circular deps
 
 /** ── Inventory list view ───────────────────────────────────────────────── */
 
@@ -165,8 +158,7 @@ export async function quickAdjust(barcode, delta, btnEl) {
       row[2] = result.newQty;
       renderInventoryList(S.inventoryCache, $('inv-search')?.value.trim().toLowerCase() || '');
       updateLowStockBadge();
-      const { showUndoToast } = await import('./undo.js');
-      showUndoToast(payload, result.newQty);
+      window.dispatchEvent(new CustomEvent('show-undo', { detail: { payload, newQty: result.newQty } }));
     }
   } catch (e) {
     if (saving) saving.textContent = 'err';

@@ -1,13 +1,14 @@
 /**
  * setup.js — First-run sheet creation and setup wizard UI.
- * Handles creating the Google Sheet with formatting, and Drive search
- * for an existing sheet (so re-authentication reconnects, not recreates).
+ * No circular imports — communicates back to app.js via custom DOM events:
+ *   'setup-complete'    → show main screen and init
+ *   'setup-go-welcome'  → return to welcome screen
  */
 
-import { S }                             from './state.js';
-import { $, setStatus }                  from './utils.js';
-import { gapi }                          from './api.js';
-import { requestToken, scheduleTokenRefresh } from './auth.js';
+import { S }                from './state.js';
+import { $, setStatus }     from './utils.js';
+import { gapi }             from './api.js';
+import { requestToken }     from './auth.js';
 
 /** Search the user's Drive for an existing Inventory Scanner sheet. */
 export async function findExistingSheet() {
@@ -28,10 +29,9 @@ export async function findExistingSheet() {
 
 /** Main setup flow — called after successful sign-in. */
 export async function runFullSetup() {
-  const { show } = await import('./app.js');
-  show('screen-setup');
+  // Dispatch to app.js to show the setup screen (avoids circular import)
+  window.dispatchEvent(new CustomEvent('setup-show-screen'));
   try {
-    // Honour the Start Fresh flag — skip Drive search if set
     const forceNew = sessionStorage.getItem('force-new-sheet') === '1';
     sessionStorage.removeItem('force-new-sheet');
 
@@ -64,11 +64,8 @@ export async function runFullSetup() {
 
     log('All done!', 100);
     setStatus('setupStatus', '\ud83c\udf89 Ready!', 'ok');
-    setTimeout(async () => {
-      const { show: showFn, initMain } = await import('./app.js');
-      showFn('screen-main');
-      initMain();
-    }, 1500);
+    // Tell app.js setup finished — it will show the main screen
+    setTimeout(() => window.dispatchEvent(new CustomEvent('setup-complete')), 1500);
 
   } catch (e) {
     console.error('[Setup]', e);
@@ -77,23 +74,22 @@ export async function runFullSetup() {
 }
 
 function handleSetupError(msg) {
-  $('setupStep').textContent = 'Something went wrong.';
+  if ($('setupStep')) $('setupStep').textContent = 'Something went wrong.';
   if (msg.includes('401') || msg.includes('TOKEN_EXPIRED') || msg.includes('Unauthorized')) {
-    $('setupStatus').innerHTML = `
+    if ($('setupStatus')) $('setupStatus').innerHTML = `
       <div class="status err">Session expired. Tap below to sign in again.</div>
-      <button class="btn-primary" id="retryAuthBtn" style="margin-top:8px;">🔄 Sign In & Retry</button>`;
+      <button class="btn-primary" id="retryAuthBtn" style="margin-top:8px;">\ud83d\udd04 Sign In & Retry</button>`;
     document.getElementById('retryAuthBtn')?.addEventListener('click', () => {
-      $('setupLog').innerHTML = '';
+      if ($('setupLog')) $('setupLog').innerHTML = '';
       setStatus('setupStatus', '', '');
       requestToken(runFullSetup);
     });
   } else {
-    $('setupStatus').innerHTML = `
+    if ($('setupStatus')) $('setupStatus').innerHTML = `
       <div class="status err">\u274c ${msg || 'Unknown error'}</div>
       <button class="btn-secondary" id="retryGenBtn" style="margin-top:8px;">\u2190 Go Back & Retry</button>`;
-    document.getElementById('retryGenBtn')?.addEventListener('click', async () => {
-      const { show } = await import('./app.js');
-      show('screen-welcome');
+    document.getElementById('retryGenBtn')?.addEventListener('click', () => {
+      window.dispatchEvent(new CustomEvent('setup-go-welcome'));
     });
   }
 }
@@ -106,7 +102,6 @@ function logLine(msg) {
   if ($('setupLog')) $('setupLog').innerHTML += msg + '<br>';
 }
 
-/** Create the Google Sheet with both Inventory and History tabs, fully formatted. */
 async function createSheet() {
   const navy  = { red: 0, green: 0.125, blue: 0.376 };
   const white = { red: 1, green: 1,     blue: 1     };
@@ -121,21 +116,16 @@ async function createSheet() {
   const res = await gapi('https://sheets.googleapis.com/v4/spreadsheets', 'POST', {
     properties: { title: 'Inventory Scanner \u2014 My Stock' },
     sheets: [
-      {
-        properties: { title: 'Inventory', sheetId: 0 },
+      { properties: { title: 'Inventory', sheetId: 0 },
         data: [{ startRow: 0, startColumn: 0, rowData: [{ values: [
           hdr('Barcode'), hdr('Description'), hdr('Quantity'),
-          hdr('Unit'), hdr('Price'), hdr('Last Updated'),
-          hdr('Min Qty'), hdr('Max Qty'),
-        ]}]}],
-      },
-      {
-        properties: { title: 'History', sheetId: 1 },
+          hdr('Unit'), hdr('Price'), hdr('Last Updated'), hdr('Min Qty'), hdr('Max Qty'),
+        ]}]}] },
+      { properties: { title: 'History', sheetId: 1 },
         data: [{ startRow: 0, startColumn: 0, rowData: [{ values: [
           hdr('Timestamp'), hdr('Barcode'), hdr('Description'),
           hdr('Change'), hdr('New Qty'), hdr('Unit'), hdr('Price'),
-        ]}]}],
-      },
+        ]}]}] },
     ],
   });
 
@@ -147,38 +137,29 @@ async function createSheet() {
     `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}:batchUpdate`,
     'POST',
     { requests: [
-      // Inventory — data rows white/black
       { repeatCell: { range: { sheetId: invId, startRowIndex: 1, endRowIndex: 5000, startColumnIndex: 0, endColumnIndex: 8 },
         cell: { userEnteredFormat: { backgroundColor: white, textFormat: { bold: false, foregroundColor: black } } },
         fields: 'userEnteredFormat(backgroundColor,textFormat)' } },
-      // Inventory — barcode column as plain TEXT (preserves leading zeros)
       { repeatCell: { range: { sheetId: invId, startRowIndex: 1, endRowIndex: 5000, startColumnIndex: 0, endColumnIndex: 1 },
         cell: { userEnteredFormat: { numberFormat: { type: 'TEXT' } } },
         fields: 'userEnteredFormat.numberFormat' } },
-      // Inventory — price column as currency
       { repeatCell: { range: { sheetId: invId, startRowIndex: 1, endRowIndex: 5000, startColumnIndex: 4, endColumnIndex: 5 },
         cell: { userEnteredFormat: { numberFormat: { type: 'CURRENCY', pattern: '"$"#,##0.00' } } },
         fields: 'userEnteredFormat.numberFormat' } },
-      // Inventory — borders
       { repeatCell: { range: { sheetId: invId, startRowIndex: 0, endRowIndex: 5000, startColumnIndex: 0, endColumnIndex: 8 },
         cell: { userEnteredFormat: { borders: { top: solid(grey), bottom: solid(grey), left: solid(grey), right: solid(grey) } } },
         fields: 'userEnteredFormat.borders' } },
-      // Inventory — freeze header row
       { updateSheetProperties: { properties: { sheetId: invId, gridProperties: { frozenRowCount: 1 } }, fields: 'gridProperties.frozenRowCount' } },
-      // History — data rows white/black
       { repeatCell: { range: { sheetId: histId, startRowIndex: 1, endRowIndex: 5000, startColumnIndex: 0, endColumnIndex: 7 },
         cell: { userEnteredFormat: { backgroundColor: white, textFormat: { bold: false, foregroundColor: black } } },
         fields: 'userEnteredFormat(backgroundColor,textFormat)' } },
-      // History — borders
       { repeatCell: { range: { sheetId: histId, startRowIndex: 0, endRowIndex: 5000, startColumnIndex: 0, endColumnIndex: 7 },
         cell: { userEnteredFormat: { borders: { top: solid(grey), bottom: solid(grey), left: solid(grey), right: solid(grey) } } },
         fields: 'userEnteredFormat.borders' } },
-      // History — freeze header row
       { updateSheetProperties: { properties: { sheetId: histId, gridProperties: { frozenRowCount: 1 } }, fields: 'gridProperties.frozenRowCount' } },
     ]}
   );
 
-  // Cache invSheetId immediately
   S._invSheetId = invId;
   return spreadsheetId;
 }

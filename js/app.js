@@ -16,7 +16,7 @@
  *   app.js       — This file: routing, submit, boot
  */
 
-import { S, CLIENT_ID }               from './state.js';
+import { S, CLIENT_ID, getThreshold } from './state.js';
 import { $, setStatus }               from './utils.js';
 import { ensureToken, requestToken, scheduleTokenRefresh } from './auth.js';
 import { runFullSetup }               from './setup.js';
@@ -124,6 +124,10 @@ export function initMain() {
   initInstallBanner();
   initScanner();
   initInventory();
+
+  // Cross-module events (replaces circular imports)
+  window.addEventListener('show-undo', e => showUndoToast(e.detail.payload, e.detail.newQty));
+  window.addEventListener('update-badge', () => updateLowStockBadge());
 
   const diag = document.getElementById('diag-panel');
   if (diag) diag.style.display = 'none';
@@ -241,5 +245,10 @@ window.addEventListener('load', () => {
     init();
   }, 8000);
 });
+
+// Setup wizard events — avoids circular import between setup.js and app.js
+window.addEventListener('setup-show-screen', () => show('screen-setup'));
+window.addEventListener('setup-complete',    () => { show('screen-main'); initMain(); });
+window.addEventListener('setup-go-welcome',  () => show('screen-welcome'));
 
 registerServiceWorker();

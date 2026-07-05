@@ -59,8 +59,7 @@ export async function performUndo() {
     }, false);
     setStatus('result', '↩ Undone — stock restored to ' + result.newQty, 'ok');
     S.inventoryCache = [];
-    const { updateLowStockBadge } = await import('./inventory.js');
-    updateLowStockBadge();
+    window.dispatchEvent(new CustomEvent('update-badge'));
   } catch (e) {
     setStatus('result', 'Undo failed: ' + e.message, 'err');
   }
