@@ -607,41 +607,23 @@ $('addBtn').addEventListener('click', () => submitChange('add'));
 $('subBtn').addEventListener('click', () => submitChange('subtract'));
 
 /* ─── Main Screen Init ──────────────────────────────────────────────────── */
-// ─── Smart Sheet Opener ─────────────────────────────────────────────────────
-// Android: Chrome intercepts intent:// URLs for Google-owned domains (including
-//   docs.google.com) before they reach the OS intent system — so intent URLs
-//   never actually open the Sheets app. The reliable workaround is the Web
-//   Share API: navigator.share() bypasses Chrome and triggers the native Android
-//   share sheet, where the user can pick Google Sheets directly.
-// iOS: universal links route docs.google.com to the Sheets app automatically.
-// Desktop: opens a new browser tab.
+// ─── Sheet Opener ───────────────────────────────────────────────────────────
+// Opens the Google Sheet in a new browser tab on all platforms.
+//
+// Note on Android / "open in Sheets app":
+// There is no reliable way to directly open the Google Sheets native app from
+// an external web page hosted on a non-Google domain. Chrome intercepts
+// intent:// URLs for docs.google.com before they reach Android's intent system,
+// and the Web Share API shows a share-to-contacts sheet, not an open-with picker.
+//
+// The correct path on Android is Chrome's built-in behaviour: when a new tab
+// opens a docs.google.com URL, Chrome automatically shows an "Open in app"
+// banner at the top of the page if Google Sheets is installed. Tapping that
+// banner opens the sheet in the native app. This is Google's own intended flow
+// and is the most reliable cross-device approach.
 function openSheet(e) {
   e.preventDefault();
   if (!S.sheetUrl) return;
-
-  const isAndroid = /android/i.test(navigator.userAgent || '');
-
-  if (isAndroid) {
-    if (navigator.share) {
-      // Web Share API → native Android share sheet → user picks Sheets app.
-      // Works on all Android versions, no Chrome domain restrictions.
-      navigator.share({
-        title: 'Inventory Sheet',
-        url: S.sheetUrl
-      }).catch(err => {
-        // User dismissed the share sheet or share failed — open in new tab
-        if (err.name !== 'AbortError') {
-          window.open(S.sheetUrl, '_blank', 'noopener');
-        }
-      });
-      return;
-    }
-    // Web Share not available (older Android) — open in new tab
-    window.open(S.sheetUrl, '_blank', 'noopener');
-    return;
-  }
-
-  // iOS universal links + Desktop
   window.open(S.sheetUrl, '_blank', 'noopener');
 }
 
@@ -651,6 +633,31 @@ function initMain() {
     el.href = S.sheetUrl || '#';
     el.addEventListener('click', openSheet);
   });
+
+  // Show a one-time hint on Android explaining Chrome's "Open in app" banner
+  const isAndroid = /android/i.test(navigator.userAgent || '');
+  if (isAndroid && !localStorage.getItem('sheetHintSeen')) {
+    localStorage.setItem('sheetHintSeen', '1');
+    setTimeout(() => {
+      const hint = document.createElement('div');
+      hint.style.cssText = [
+        'position:fixed;bottom:70px;left:12px;right:12px',
+        'background:#1e293b;border:1px solid #334155;border-radius:10px',
+        'padding:12px 14px;font-size:0.78rem;color:#94a3b8',
+        'z-index:500;line-height:1.5;box-shadow:0 4px 20px rgba(0,0,0,0.4)'
+      ].join(';');
+      hint.innerHTML = [
+        '<span style="color:#f1f5f9;font-weight:600;">📊 Opening Google Sheets on Android</span><br>',
+        'When the sheet opens in Chrome, look for the <b style="color:#f1f5f9">Open in app</b> ',
+        'banner at the top of the page — that\'s the reliable way to jump to the native Sheets app.',
+        '<div style="text-align:right;margin-top:8px;">',
+        '<span style="color:#22c55e;cursor:pointer;" onclick="this.parentElement.parentElement.remove()">Got it ✓</span>',
+        '</div>'
+      ].join('');
+      document.body.appendChild(hint);
+      setTimeout(() => hint.remove(), 9000);
+    }, 800);
+  }
 
   $('resetBtn').addEventListener('click', () => {
     // Re-authenticate keeps the same sheet — use 'Start fresh' for a new one
