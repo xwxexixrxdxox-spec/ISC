@@ -1,0 +1,31 @@
+name: JS Syntax Check
+
+on:
+  push:
+    paths: ['js/**/*.js']
+  pull_request:
+    paths: ['js/**/*.js']
+
+jobs:
+  check-syntax:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Check JS syntax
+        run: |
+          echo "Checking syntax for all JS modules…"
+          failed=0
+          for f in js/*.js; do
+            if node --check "$f" 2>&1; then
+              echo "✅ $f"
+            else
+              echo "❌ $f"
+              failed=1
+            fi
+          done
+          exit $failed
