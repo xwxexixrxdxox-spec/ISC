@@ -1,4 +1,4 @@
-# 📦 Inventory Scanner
+# 📦 Inventory Scanner 
 
 A mobile-first Progressive Web App for real-time inventory control. Scan barcodes with your phone camera, look up product info and live vendor prices automatically, track stock that syncs instantly to a Google Sheet — with a full audit log, offline support, low stock alerts, and min/max reorder thresholds.
 
