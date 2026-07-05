@@ -109,7 +109,7 @@ function buildRowHtml(r) {
         + '<button class="inv-adj-btn minus" onclick="quickAdjust(\'' + sBar + '\',-1,this)" aria-label="Remove one">\u2212</button>'
         + '<span class="inv-adj-saving" aria-live="polite"></span>'
         + '<button class="inv-adj-btn plus"  onclick="quickAdjust(\'' + sBar + '\',1,this)"  aria-label="Add one">+</button>'
-        + '<button style="background:none;border:none;color:var(--muted);font-size:0.9rem;cursor:pointer;padding:2px;width:auto;margin:0;" onclick="openEditModal(\'' + sBar + '\',\'' + sName + '\',\'' + sUnit + '\',\'' + sPric + '\')" aria-label="Edit item">\u270f\ufe0f</button>'
+        + '<button style="background:none;border:none;color:var(--muted);font-size:0.9rem;cursor:pointer;padding:2px;width:auto;margin:0;" onclick="openEditModal(\'' + sBar + '\',\'' + sName + '\',\'' + sUnit + '\',\'' + sPric + '\',' + qty + ')" aria-label="Edit item">\u270f\ufe0f</button>'
       + '</div>'
     + '</div>'
   + '</div>';
@@ -171,7 +171,7 @@ export async function quickAdjust(barcode, delta, btnEl) {
 
 /* --- Edit item modal ----------------------------------------------------- */
 
-export function openEditModal(barcode, name, unit, price) {
+export function openEditModal(barcode, name, unit, price, qty) {
   document.querySelector('.modal-backdrop')?.remove();
   const modal = document.createElement('div');
   modal.className = 'modal-backdrop';
@@ -181,6 +181,8 @@ export function openEditModal(barcode, name, unit, price) {
     '<div class="modal-sheet">'
     + '<div class="modal-title">Edit Item</div>'
     + '<div class="modal-sub" style="font-family:monospace;font-size:0.75rem;">' + barcode + '</div>'
+    + '<label for="edit-qty">Quantity</label>'
+    + '<input id="edit-qty" type="number" min="0" value="' + (qty||0) + '" aria-label="Current quantity">'
     + '<label for="edit-desc">Description</label>'
     + '<input id="edit-desc" value="' + (name||'').replace(/"/g,'&quot;') + '" aria-label="Item description">'
     + '<label for="edit-unit">Unit</label>'
@@ -209,6 +211,8 @@ export async function saveEditedItem(barcode) {
   const unit        = ($('edit-unit')?.value || '').trim();
   const price       = ($('edit-price')?.value || '').trim();
   if (!description) { setStatus('edit-status', 'Description cannot be empty.', 'err'); if (btn) btn.disabled = false; return; }
+  const qtyRaw = ($('edit-qty')?.value || '').trim();
+  const newQty = qtyRaw !== '' ? parseInt(qtyRaw, 10) : null;
   try {
     await ensureToken();
     const data = await sheetsRead(S.spreadsheetId, 'Inventory!A:A');
@@ -222,10 +226,17 @@ export async function saveEditedItem(barcode) {
       { range: 'Inventory!B' + rowIndex, values: [[description]] },
       { range: 'Inventory!D' + rowIndex, values: [[unit]] },
     ];
+    if (newQty !== null && !isNaN(newQty)) updates.push({ range: 'Inventory!C' + rowIndex, values: [[newQty]] });
     if (price !== '') updates.push({ range: 'Inventory!E' + rowIndex, values: [[parseFloat(price)]] });
+    if (newQty !== null && !isNaN(newQty)) updates.push({ range: 'Inventory!F' + rowIndex, values: [[new Date().toLocaleString()]] });
     await sheetsBatchUpdate(S.spreadsheetId, updates);
     const cached = S.inventoryCache.find(r => String(r[0]||'').trim() === barcode);
-    if (cached) { cached[1] = description; cached[3] = unit; if (price !== '') cached[4] = parseFloat(price); }
+    if (cached) {
+      cached[1] = description;
+      if (newQty !== null && !isNaN(newQty)) cached[2] = newQty;
+      cached[3] = unit;
+      if (price !== '') cached[4] = parseFloat(price);
+    }
     document.querySelector('.modal-backdrop')?.remove();
     renderInventoryList(S.inventoryCache, $('inv-search')?.value.trim().toLowerCase() || '');
   } catch (e) {
