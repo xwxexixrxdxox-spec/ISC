@@ -279,3 +279,130 @@ details summary { cursor: pointer; font-size: 0.85rem; color: var(--muted); user
 .vendor-item-price { font-size: 0.95rem; font-weight: 700; color: var(--accent); flex-shrink: 0; }
 .vendor-item-ship  { font-size: 0.68rem; color: var(--muted); margin-left: 4px; }
 .vendor-best       { background: rgba(34,197,94,0.06); }
+
+/* ─── Light mode ────────────────────────────────────────────────────────────── */
+@media (prefers-color-scheme: light) {
+  :root {
+    --bg:     #f8fafc;
+    --card:   #ffffff;
+    --text:   #0f172a;
+    --muted:  #64748b;
+    --border: #e2e8f0;
+    --accent: #16a34a;
+    --red:    #dc2626;
+    --blue:   #2563eb;
+    --yellow: #d97706;
+  }
+  input, select { background: #f1f5f9; color: var(--text); }
+  .btn-secondary { background: #e2e8f0; color: var(--text); }
+  .btn-outline   { border-color: var(--border); color: var(--text); }
+  #bottom-nav    { background: #ffffff; }
+  .inv-item:hover { background: rgba(0,0,0,0.03); }
+  .vendor-item:hover { background: rgba(0,0,0,0.03); }
+  .vendor-best { background: rgba(22,163,74,0.06); }
+}
+
+/* ─── Undo toast ────────────────────────────────────────────────────────────── */
+#undo-toast {
+  position: fixed;
+  bottom: 72px;
+  left: 12px; right: 12px;
+  background: #1e293b;
+  border: 1px solid #334155;
+  border-radius: 10px;
+  padding: 12px 14px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  z-index: 400;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.4);
+  animation: slideUp 0.25s ease;
+}
+@media (prefers-color-scheme: light) {
+  #undo-toast { background: #1e293b; color: #f1f5f9; }
+}
+.undo-toast-msg { font-size: 0.82rem; color: #f1f5f9; flex: 1; }
+.undo-toast-bar {
+  height: 3px; background: var(--border);
+  border-radius: 2px; margin: 6px 0 0;
+  overflow: hidden;
+}
+.undo-toast-progress {
+  height: 100%; background: var(--accent);
+  border-radius: 2px;
+  transition: width linear;
+}
+.undo-btn {
+  background: var(--accent);
+  color: white;
+  border: none;
+  border-radius: 6px;
+  padding: 6px 12px;
+  font-size: 0.8rem;
+  font-weight: 700;
+  cursor: pointer;
+  margin-left: 10px;
+  width: auto;
+  margin-top: 0;
+}
+@keyframes slideUp {
+  from { transform: translateY(20px); opacity: 0; }
+  to   { transform: translateY(0);    opacity: 1; }
+}
+
+/* ─── Install banner ────────────────────────────────────────────────────────── */
+#install-banner {
+  position: fixed;
+  top: 0; left: 0; right: 0;
+  background: linear-gradient(135deg, #1e3a5f, #0f172a);
+  border-bottom: 1px solid var(--border);
+  padding: 10px 14px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  z-index: 350;
+  animation: slideDown 0.3s ease;
+}
+@keyframes slideDown {
+  from { transform: translateY(-100%); }
+  to   { transform: translateY(0); }
+}
+.install-banner-text { flex: 1; font-size: 0.8rem; color: #f1f5f9; line-height: 1.4; }
+.install-banner-text b { color: #22c55e; }
+.install-accept { background: var(--accent); color: white; border: none; border-radius: 6px; padding: 7px 12px; font-size: 0.8rem; font-weight: 700; cursor: pointer; width: auto; margin: 0; }
+.install-dismiss { background: none; border: none; color: var(--muted); font-size: 1.2rem; cursor: pointer; width: auto; margin: 0; padding: 4px; }
+
+/* ─── Quick adjust buttons on inventory rows ────────────────────────────────── */
+.inv-adj-wrap {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 4px;
+}
+.inv-adj-btn {
+  width: 28px; height: 28px;
+  border-radius: 50%;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--text);
+  font-size: 1rem;
+  font-weight: 700;
+  cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  padding: 0; margin: 0;
+  line-height: 1;
+  transition: background 0.1s, transform 0.1s;
+}
+.inv-adj-btn:active { transform: scale(0.9); background: var(--border); }
+.inv-adj-btn.minus { color: var(--red); border-color: var(--red); }
+.inv-adj-btn.plus  { color: var(--accent); border-color: var(--accent); }
+.inv-adj-saving    { font-size: 0.65rem; color: var(--muted); }
+
+/* ─── Error recovery banner ─────────────────────────────────────────────────── */
+#error-recovery {
+  position: fixed; top: 0; left: 0; right: 0;
+  background: var(--red); color: white;
+  padding: 10px 14px; font-size: 0.82rem;
+  z-index: 500; display: none;
+  line-height: 1.5;
+}
