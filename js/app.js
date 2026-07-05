@@ -215,6 +215,10 @@ export function initMain() {
   }
 }
 
+function dismissSharedHint() {
+  document.getElementById('shared-sheet-hint')?.remove();
+}
+
 function showSharedSheetHint() {
   // Remove any existing hint
   document.getElementById('shared-sheet-hint')?.remove();
@@ -238,7 +242,7 @@ function showSharedSheetHint() {
     + 'In Google Sheets: Share button &rarr; add your email &rarr; choose Editor.'
     + '</div>'
     + '<div style="text-align:right;margin-top:10px;">'
-    + '<button onclick="document.getElementById('shared-sheet-hint').remove()" '
+    + '<button onclick="dismissSharedHint()" '
     + 'style="background:#3b82f6;color:white;border:none;border-radius:6px;'
     + 'padding:7px 14px;font-size:0.8rem;font-weight:700;cursor:pointer;">'
     + 'Got it</button>'
@@ -327,6 +331,7 @@ document.getElementById('subBtn')?.addEventListener('click', () => submitChange(
    ES modules are scoped -- functions used in onclick="..." strings on
    dynamically generated rows must be attached to window explicitly.       */
 Object.assign(window, {
+  dismissSharedHint,
   openMinQtyModal,
   saveThreshold,
   quickAdjust,
