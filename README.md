@@ -1,10 +1,11 @@
 # 📦 Inventory Scanner
 
-A mobile-first Progressive Web App for real-time inventory control. Scan barcodes with your phone camera, look up product info and live vendor prices automatically, track stock that syncs instantly to a Google Sheet — with a full audit log, offline support, low stock alerts, and min/max reorder thresholds.
+A mobile-first Progressive Web App for real-time inventory control. Scan barcodes with your phone camera, look up product info and live vendor prices automatically, track stock that syncs to your Google Sheet — with a full audit log, offline support, low-stock alerts, min/max reorder thresholds, item history, and a reorder shopping list.
 
 [![Live App](https://img.shields.io/badge/Live%20App-GitHub%20Pages-22c55e?style=flat-square)](https://xwxexixrxdxox-spec.github.io/ISC/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue?style=flat-square)](./LICENSE)
 [![PWA Ready](https://img.shields.io/badge/PWA-Ready-7c3aed?style=flat-square)](https://pwabuilder.com)
+[![JS Check](https://github.com/xwxexixrxdxox-spec/ISC/actions/workflows/lint.yml/badge.svg)](https://github.com/xwxexixrxdxox-spec/ISC/actions/workflows/lint.yml)
 
 ---
 
@@ -12,106 +13,102 @@ A mobile-first Progressive Web App for real-time inventory control. Scan barcode
 
 | Feature | Details |
 |---|---|
-| 📷 Barcode scanning | BarcodeDetector API — no extra hardware. Requires 3 consecutive reads to reject false positives. 5-frame miss tolerance so slight hand movement does not reset progress. |
-| 🏷 Auto product lookup | Open Food Facts — name, unit, and estimated price auto-filled from barcode |
-| 💰 Live vendor prices | UPCitemdb free API — real vendor listings sorted cheapest first. Tap any row to use that price. Google Shopping fallback link for anything not found. |
-| 📊 Live Google Sheets sync | Direct Sheets API writes — no Apps Script middleman, no CORS issues |
-| ⚡ Auto setup | Signs in with Google once, creates your sheet automatically — no Client IDs or URLs to copy |
-| 🔁 Smart reconnect | Re-authentication always reconnects to your existing sheet. Start Fresh creates a new one only when explicitly requested. |
-| 📡 Offline queue | Scans made without internet are queued in localStorage and auto-synced on reconnect |
-| 📋 Audit log | Every stock change recorded to a History tab: timestamp, barcode, description, quantity change, new total |
-| ⚠️ Low stock alerts | Set minimum quantity per item — items at or below threshold bubble to top with a ⚠ Reorder badge |
-| 📦 Min / Max thresholds | Set both a reorder minimum and a stock maximum. App calculates "order N to restock" automatically. Thresholds stored in Google Sheet columns G/H and sync across devices. |
+| 📷 Barcode scanning | BarcodeDetector API — no hardware needed. 3-read confirmation rejects false positives. 5-frame miss tolerance for hand movement. |
+| 🏷 Product lookup | Open Food Facts — description, unit, and estimated price auto-filled from barcode |
+| 💰 Live vendor prices | UPCitemdb → Open Food Facts Prices → Google Shopping fallback. Sorted cheapest first. Cached per session. |
+| 📊 Google Sheets sync | Direct Sheets API v4 writes — no middleman, no CORS issues |
+| ⚡ Auto setup | Signs in with Google, creates Inventory + History sheet with full formatting automatically |
+| 🤝 Join shared sheet | Enter a spreadsheet URL or ID to connect to a teammate's existing sheet |
+| 🔁 Smart reconnect | Re-authentication always reconnects to your existing sheet — never creates a duplicate |
+| 📡 Offline queue | Scans queue locally when offline and auto-sync on reconnect |
+| ↩ Undo | 30-second countdown toast after every stock change. Tapping reverses the write. |
+| ➕ Quick adjust | Inline − / + buttons on every inventory row. Adjust by 1 without scanning. |
+| ✏️ Edit items | Edit description, unit, and price directly from the app |
+| 📋 Reorder tab | Third tab showing only low-stock items sorted by urgency, with order quantities and a Share button |
+| 📖 Item history | Last 10 stock changes for any item, pulled from the History sheet |
+| ⚠️ Low stock alerts | Set minimum per item — low items badge in tab bar and sort to top |
+| 📦 Min / Max thresholds | Set reorder minimum and stock maximum. App calculates order-up-to quantity. Stored in sheet columns G/H, syncs across all devices. |
+| 🔔 App icon badge | PWA icon shows low-stock count badge when installed to home screen |
 | 🔄 Token refresh | OAuth tokens silently refreshed at 50 minutes — sessions never expire mid-scan |
-| 📱 Installable PWA | Add to home screen on Android or iOS, or package for Google Play / Microsoft Store via PWABuilder |
-| 🔒 Privacy first | No backend server, no accounts, no analytics. All data goes to your own Google Drive. |
+| 📱 PWA installable | Add to home screen on Android or iOS. Package for Play Store / Microsoft Store via PWABuilder. |
+| 🌗 Light / dark mode | Respects device system theme automatically |
+| ♿ Accessible | ARIA labels, roles, and live regions throughout |
+| 🔒 Private | No backend, no accounts, no analytics. All data stays in your Google Drive. |
 
 ---
 
-## Initial Setup (~10 minutes, one time only)
+## Setup (~10 minutes, one time)
 
 ### 1. Google Cloud Project
 
-1. Go to [console.cloud.google.com](https://console.cloud.google.com) → **New Project** (name it anything)
-2. **APIs & Services → Library** → enable:
-   - **Google Sheets API**
-   - **Google Drive API**
-3. **APIs & Services → OAuth consent screen**
-   - Choose **External** → fill in app name and your email → Save and Continue through all steps
-   - On the **Test users** screen → **+ Add Users** → add your Gmail address → Save
+1. Go to [console.cloud.google.com](https://console.cloud.google.com) → **New Project**
+2. **APIs & Services → Library** → enable **Google Sheets API** and **Google Drive API**
+3. **OAuth consent screen** → External → fill in app name and your email → Save
+   - Under **Test users** → **+ Add Users** → add your Gmail address
 4. **Credentials → Create Credentials → OAuth Client ID**
-   - Application type: **Web application**
+   - Type: **Web application**
    - Authorized JavaScript origins: `https://xwxexixrxdxox-spec.github.io`
-   - Click **Create** — copy the **Client ID**
+   - Click **Create** → copy the **Client ID**
 
-> **Note:** The OAuth consent screen stays in Testing mode (100 user limit) until you submit for Google verification. For personal or small team use, Testing mode is fine indefinitely as long as all users are added as test users.
+> The consent screen stays in Testing mode (100-user limit) until you submit for Google verification. For personal or small-team use, Testing mode is fine indefinitely as long as users are added as test users.
 
----
+### 2. Open the App
 
-### 2. Connect the App
-
-1. Open the app at [https://xwxexixrxdxox-spec.github.io/ISC/](https://xwxexixrxdxox-spec.github.io/ISC/)
-2. Tap **Sign in with Google** — the button is disabled until Google's library has fully loaded (shows "Loading…" briefly)
-3. Sign in with the Google account you added as a test user
-4. The app automatically:
-   - Searches your Drive for an existing inventory sheet
-   - Creates one if none is found — named **"Inventory Scanner — My Stock"**
-   - Applies formatting: navy header row, white data rows, grey borders, currency and text column formats
-   - Adds both an **Inventory** tab and a **History** (audit log) tab
-5. You land on the scanner screen with a **📊 View Sheet** button in the top corner
+1. Go to [https://xwxexixrxdxox-spec.github.io/ISC/](https://xwxexixrxdxox-spec.github.io/ISC/)
+2. Tap **Sign in with Google** (button is disabled briefly while Google's library loads)
+3. Sign in with the account you added as a test user
+4. The app creates your sheet and lands on the scanner
 
 ---
 
 ## Daily Use
 
-### Scanning an item
-1. Tap **📷 Scan Barcode** — button shows "Loading…" until the camera is ready
-2. Point at any barcode and hold steady — a progress bar fills from 33% → 66% → 100%
-3. The app requires 3 consecutive identical reads before accepting (rejects nearby printed numbers). Slight movement is tolerated up to 5 missed frames before the streak resets.
-4. Description, unit, and price auto-fill from Open Food Facts where available
-5. Vendor prices load below the price field — sorted cheapest first with a 🏆 on the best deal. Tap any row to use that price.
-6. Adjust quantity, tap **+ Add Stock** or **− Remove**
-7. The Google Sheet updates in real time. The History tab gets a new row for every change.
+### Scanning
+Tap **📷 Scan Barcode**, hold the barcode steady — progress shows 33% → 66% → 100%. Description, unit, and price auto-fill. Vendor prices load below the price field sorted cheapest first. Adjust quantity and tap **+ Add Stock** or **− Remove**. An undo toast appears for 30 seconds after every change.
 
-### Offline scanning
-If you lose internet mid-session, changes are queued locally. An amber bar appears at the top showing how many are pending. They sync automatically when connectivity returns.
+### Inventory tab
+Browse all items, search by name or barcode, and use the inline − / + buttons to adjust without scanning. Tap an item name to set min/max thresholds. Tap ✏️ to edit description, unit, or price. Low-stock items sort to the top.
 
-### Inventory list
-Tap the **📦 Inventory** tab to see all items with current stock levels. Use the search bar to filter by name or barcode. Items below their minimum threshold sort to the top with a ⚠ badge. Tap any item to set or edit its min/max thresholds.
+### Reorder tab
+Shows only items below their minimum threshold sorted by urgency. Each row shows exactly how many units to order. Tap **📤 Share** to send the list as a text message, email, or copy to clipboard.
 
-### Min / Max thresholds
-Tapping an item in the inventory list opens a modal with two fields:
-- **Reorder alert** — alert fires when stock falls to or below this number
-- **Maximum stock** — your target stock level when restocking
+### Item history
+In the threshold modal (tap any item name), tap **📋 History** to see the last 10 stock changes with timestamps.
 
-The modal shows a live hint as you type: `min 5 / max 50 / order 35 to restock`. Thresholds are written to columns G and H of your Google Sheet so they sync across all devices using the same sheet.
+### Joining a team sheet
+On the welcome screen, paste a Google Sheets URL or spreadsheet ID into the "Joining a team?" field and tap **Connect to this Sheet**. You'll be asked to sign in and the app connects to the shared sheet instead of creating your own.
 
-### Viewing your sheet
-Tap **📊 View Sheet** to open your Google Sheet in a new browser tab. On Android, Chrome shows an "Open in app" banner at the top of the page — tap that to open in the native Google Sheets app.
+### Viewing the sheet
+Tap **📊 View Sheet** to open the Google Sheet in a new browser tab. On Android, Chrome shows an "Open in app" banner — tap it to jump to the native Google Sheets app.
 
 ### Re-authenticating
-If your session expires, the next scan triggers a silent token refresh. If a manual re-auth is needed, go to **Settings → 🔄 Re-authenticate Google**. This keeps your existing sheet — it just refreshes the login.
+**Settings → 🔄 Re-authenticate Google** refreshes your sign-in while keeping your sheet connected.
 
-### Starting fresh with a new sheet
-**Settings → ⚠️ Start Fresh (new sheet)** disconnects from your current sheet and creates a new one on next sign-in. Your old sheet stays safely in Google Drive and can be reconnected by signing in again — the app searches Drive for it by name on every sign-in.
+### Starting fresh
+**Settings → ⚠️ Start Fresh** disconnects and creates a new sheet on next sign-in. Your old sheet stays in Google Drive.
 
 ---
 
 ## Google Sheet Structure
 
-| Column | Contents |
+### Inventory tab
+
+| Col | Contents |
 |---|---|
-| A | Barcode (formatted as plain text — leading zeros preserved) |
+| A | Barcode (TEXT format — leading zeros preserved) |
 | B | Description |
 | C | Quantity |
 | D | Unit |
-| E | Price (currency formatted) |
+| E | Price (currency format) |
 | F | Last Updated |
 | G | Min Qty (reorder threshold) |
 | H | Max Qty (stock maximum) |
 
-The **History** tab records every transaction:
+### History tab
+
 Timestamp · Barcode · Description · Change · New Qty · Unit · Price
+
+Every stock change is recorded here. Used by the in-app Item History feature.
 
 ---
 
@@ -119,20 +116,33 @@ Timestamp · Barcode · Description · Change · New Qty · Unit · Price
 
 ```
 /
-├── index.html              Main markup (screens, navigation, scanner UI)
+├── index.html               Main markup and screen definitions
 ├── css/
-│   └── styles.css          All styles (design tokens, components, animations)
+│   └── styles.css           All styles, light/dark mode, components
 ├── js/
-│   └── app.js              All application logic (~1,100 lines, sectioned)
-├── manifest.json           PWA manifest (shortcuts, icons, display modes)
-├── service-worker.js       Offline caching — network-first for HTML/JS/CSS
-├── privacy-policy.html     Required for store submissions
+│   ├── app.js               Entry point — routing, submit, boot, error boundary
+│   ├── state.js             Shared S object, CLIENT_ID, getThreshold
+│   ├── utils.js             $(), setStatus(), withRetry()
+│   ├── api.js               Google Sheets API — read, append, batchUpdate, formatting
+│   ├── auth.js              OAuth, token refresh, ensureToken
+│   ├── setup.js             Sheet creation, Drive search, setup wizard
+│   ├── offline.js           Offline queue, writeToSheet, audit log
+│   ├── scanner.js           Camera, barcode detection, product + vendor lookup
+│   ├── inventory.js         List view, quick-adjust, edit modal, thresholds, history, shopping list
+│   ├── undo.js              30-second undo with countdown toast
+│   └── pwa.js               Install prompt, service worker registration
+├── .github/
+│   └── workflows/
+│       └── lint.yml         Auto syntax-check on every push
+├── manifest.json            PWA manifest (shortcuts, icons, display modes)
+├── service-worker.js        Offline caching — network-first for HTML/JS/CSS
+├── privacy-policy.html      Required for store submissions
 ├── icons/
-│   ├── icon-192.png        PWA icon (barcode-themed, dark bg)
+│   ├── icon-192.png
 │   └── icon-512.png
-├── Inventory_Template.csv  Reference column structure
+├── Inventory_Template.csv   Reference column structure
 ├── CHANGELOG.md
-├── LICENSE                 MIT
+├── LICENSE                  MIT
 └── README.md
 ```
 
@@ -142,35 +152,39 @@ Timestamp · Barcode · Description · Change · New Qty · Unit · Price
 
 | Layer | Technology |
 |---|---|
-| App | Vanilla JS PWA — no framework, no build step |
+| App | Vanilla JS ES modules — no framework, no build step |
 | Barcode scanning | BarcodeDetector API (Chrome on Android) |
 | Product lookup | Open Food Facts API |
-| Vendor prices | UPCitemdb free trial API (100 lookups/day, cached per session) |
-| Data storage | Google Sheets API v4 (direct browser → Sheets, no backend) |
-| Auth | Google Identity Services (OAuth 2.0, hardcoded developer Client ID) |
+| Vendor prices | UPCitemdb free tier → Open Food Facts Prices API |
+| Data storage | Google Sheets API v4 (direct browser writes via OAuth token) |
+| Auth | Google Identity Services (OAuth 2.0) |
 | Hosting | GitHub Pages |
+| CI | GitHub Actions (`node --check` on every push) |
 | Store packaging | [PWABuilder](https://pwabuilder.com) |
 
 ---
 
 ## Store Publishing
 
-1. Go to [pwabuilder.com](https://pwabuilder.com)
-2. Paste `https://xwxexixrxdxox-spec.github.io/ISC/`
-3. Download the Android (`.aab`) or Windows (`.msix`) package
-4. Submit via [Google Play Console](https://play.google.com/console) ($25 one-time) or [Microsoft Partner Center](https://partner.microsoft.com/dashboard) (free)
+Before submitting to stores, ensure:
+- [ ] OAuth consent screen submitted for Google verification (lifts 100-user limit)
+- [ ] Real app icon replacing placeholder (192×192 and 512×512 PNG)
+- [ ] Store screenshots taken (at least 2)
+- [ ] `privacy-policy.html` URL confirmed live
 
-For public Play Store listing, the OAuth consent screen must be verified by Google (submit via Google Cloud Console → APIs & Services → OAuth consent screen → Publish). The `privacy-policy.html` is already live at `https://xwxexixrxdxox-spec.github.io/ISC/privacy-policy.html` and meets the minimum requirements for submission.
+Then:
+1. Go to [pwabuilder.com](https://pwabuilder.com) → paste `https://xwxexixrxdxox-spec.github.io/ISC/`
+2. Download Android (`.aab`) or Windows (`.msix`) package
+3. Submit via [Google Play Console](https://play.google.com/console) ($25 one-time) or [Microsoft Partner Center](https://partner.microsoft.com/dashboard) (free)
 
 ---
 
 ## Known Limitations
 
-- **Barcode coverage:** Open Food Facts covers retail/grocery strongly. Industrial, B2B, or custom SKUs may not match — type the description once and it saves permanently to your sheet.
-- **Vendor prices:** UPCitemdb free tier allows 100 lookups/day per IP. Coverage is strongest on US retail. Results are cached per session so repeated scans of the same item do not count against the limit.
-- **Google Sheets app on Android:** There is no reliable programmatic way to open the Google Sheets native app from a web page in Chrome for `docs.google.com` URLs — Chrome intercepts intent URLs for Google-owned domains before they reach Android's intent system. The reliable path is to tap View Sheet (opens a Chrome tab) and then tap Chrome's built-in "Open in app" banner that appears at the top of the page.
-- **OAuth test users:** The app is in Testing mode on Google Cloud. Users must be added manually in the OAuth consent screen test users list until the app is verified.
-- **Token expiry:** OAuth tokens last 60 minutes. The app silently refreshes at 50 minutes. Very long idle sessions may require a tap to re-authenticate.
+- **Vendor prices** — UPCitemdb free tier: 100 lookups/day per IP, US retail coverage. Open Food Facts Prices: crowdsourced, variable coverage. Results cached per session so repeated scans don't burn the daily limit.
+- **Google Sheets app on Android** — Chrome intercepts `docs.google.com` URLs before they reach Android's intent system, so the native Sheets app cannot be opened programmatically. Tap **View Sheet** to open in Chrome, then use Chrome's built-in "Open in app" banner to jump to the Sheets app.
+- **OAuth test users** — the consent screen is in Testing mode. Users must be manually added in the Google Cloud Console until the app is verified by Google.
+- **BarcodeDetector API** — only available in Chrome on Android. Other browsers show a manual entry fallback.
 
 ---
 
