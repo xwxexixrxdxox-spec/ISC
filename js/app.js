@@ -89,7 +89,7 @@ document.getElementById('joinSheetBtn')?.addEventListener('click', () => {
   const match = raw.match(/\/spreadsheets\/d\/([a-zA-Z0-9_-]+)/);
   const spreadsheetId = match ? match[1] : raw;
   if (!/^[a-zA-Z0-9_-]{20,}$/.test(spreadsheetId)) {
-    setStatus('joinStatus', 'That doesn\'t look like a valid spreadsheet URL or ID.', 'err');
+    setStatus('joinStatus', 'That does not look like a valid spreadsheet URL or ID.', 'err');
     return;
   }
   setStatus('joinStatus', 'Signing in to connect...', 'info');
