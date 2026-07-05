@@ -1,31 +1,204 @@
-name: JS Syntax Check
+name: Code Quality
 
 on:
   push:
-    paths: ['js/**/*.js']
+    paths: ['js/**', 'css/**', 'index.html', 'service-worker.js']
   pull_request:
-    paths: ['js/**/*.js']
+    paths: ['js/**', 'css/**', 'index.html', 'service-worker.js']
 
 jobs:
-  check-syntax:
+  quality:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-
       - uses: actions/setup-node@v4
         with:
           node-version: '24'
 
-      - name: Check JS syntax
+      # ── 1. JS Syntax ────────────────────────────────────────────────────────
+      # Catches: missing brackets, bad escape sequences, module parse errors.
+      - name: JS Syntax (node --check)
         run: |
-          echo "Checking syntax for all JS modules…"
           failed=0
-          for f in js/*.js; do
+          for f in js/*.js service-worker.js; do
             if node --check "$f" 2>&1; then
-              echo "✅ $f"
+              echo "OK  $f"
             else
-              echo "❌ $f"
+              echo "FAIL $f"
               failed=1
             fi
           done
           exit $failed
+
+      # ── 2. ASCII Purity ─────────────────────────────────────────────────────
+      # Catches: smart quotes, em dashes, emoji, arrows -- any byte > 127.
+      # These get silently corrupted by WinRAR/Windows tools misreading UTF-8,
+      # producing "Invalid or unexpected token" errors in the browser that
+      # node --check does NOT catch (they look valid inside string literals).
+      - name: ASCII Purity
+        run: |
+          python3 << 'PYEOF'
+          import os, sys
+          failed = False
+          files = [f'js/{f}' for f in os.listdir('js') if f.endswith('.js')]
+          files.append('service-worker.js')
+          for path in sorted(files):
+              if not os.path.exists(path):
+                  continue
+              data = open(path, 'rb').read()
+              bad = [(i, b) for i, b in enumerate(data) if b > 127]
+              if bad:
+                  failed = True
+                  print(f'FAIL {path}: {len(bad)} non-ASCII byte(s)')
+                  for pos, byte in bad[:5]:
+                      lineno = data[:pos].count(b'\n') + 1
+                      print(f'     line {lineno}: 0x{byte:02X}')
+              else:
+                  print(f'OK   {path}')
+          sys.exit(1 if failed else 0)
+          PYEOF
+
+      # ── 3. Apostrophes inside single-quoted strings ──────────────────────────
+      # Catches: "doesn't", "won't" etc. inside 'single-quoted JS strings'.
+      # node --check misses these when the contraction is inside a template
+      # literal or when smart quotes were converted to plain apostrophes.
+      - name: Apostrophe Check
+        run: |
+          python3 << 'PYEOF'
+          import os, sys
+          CONTRACTIONS = [
+            "doesn't","don't","won't","can't","isn't","wasn't","aren't",
+            "weren't","hasn't","haven't","hadn't","wouldn't","couldn't",
+            "shouldn't","didn't","it's","that's","there's","here's",
+            "I'm","you're","we're","they're","he's","she's",
+            "I've","you've","we've","they've","I'll","you'll",
+          ]
+          failed = False
+          for fname in sorted(os.listdir('js')):
+              if not fname.endswith('.js'):
+                  continue
+              lines = open(f'js/{fname}').read().splitlines()
+              for i, line in enumerate(lines, 1):
+                  stripped = line.strip()
+                  # Skip pure comment lines -- apostrophes there are harmless
+                  if stripped.startswith('//') or stripped.startswith('*'):
+                      continue
+                  for c in CONTRACTIONS:
+                      if c not in line:
+                          continue
+                      # Flag if the contraction is not in a template literal
+                      # (backtick strings handle apostrophes fine) and not
+                      # preceded by a backslash escape
+                      apos_idx = line.index(c) + c.index("'")
+                      if apos_idx > 0 and line[apos_idx - 1] == '\\':
+                          continue  # already escaped -- fine
+                      if '`' in line:
+                          continue  # inside a template literal -- fine
+                      print(f'FAIL js/{fname}:{i}: {c!r} inside single-quoted string?')
+                      print(f'     {stripped}')
+                      failed = True
+                      break
+          sys.exit(1 if failed else 0)
+          PYEOF
+
+      # ── 4. Import File Existence ─────────────────────────────────────────────
+      # Catches: importing a file that does not exist, wrong path, typos.
+      # These cause "Failed to load module" in the browser with no useful error.
+      - name: Import File Existence
+        run: |
+          python3 << 'PYEOF'
+          import re, os, sys
+          failed = False
+          for fname in sorted(os.listdir('js')):
+              if not fname.endswith('.js'):
+                  continue
+              content = open(f'js/{fname}').read()
+              imports = re.findall(r"from\s+'(\./[^']+)'", content)
+              for imp in imports:
+                  target = os.path.normpath(os.path.join('js', imp))
+                  if not os.path.exists(target):
+                      print(f'FAIL js/{fname}: imports {imp!r} -- file not found')
+                      failed = True
+                  else:
+                      print(f'OK   js/{fname} -> {imp}')
+          sys.exit(1 if failed else 0)
+          PYEOF
+
+      # ── 5. Orphaned Code Check ───────────────────────────────────────────────
+      # Catches: return/break/continue statements at module level (outside any
+      # function), which cause "Illegal return statement" in the browser.
+      # These slip past node --check because ES module files are parsed
+      # differently from scripts in some edge cases.
+      - name: Orphaned Return Check
+        run: |
+          python3 << 'PYEOF'
+          import re, os, sys
+          failed = False
+          for fname in sorted(os.listdir('js')):
+              if not fname.endswith('.js'):
+                  continue
+              lines = open(f'js/{fname}').read().splitlines()
+              depth = 0  # brace nesting depth
+              for i, line in enumerate(lines, 1):
+                  stripped = line.strip()
+                  if stripped.startswith('//'):
+                      continue
+                  # Count braces (simplified -- doesn't handle strings/regex)
+                  depth += stripped.count('{') - stripped.count('}')
+                  if depth < 0:
+                      print(f'FAIL js/{fname}:{i}: more closing braces than opening')
+                      print(f'     {stripped}')
+                      failed = True
+                      depth = 0
+                  # return/break at depth 0 = module level = illegal
+                  if depth == 0 and re.match(r'^\s*return\b', line) and '// ' not in line:
+                      print(f'FAIL js/{fname}:{i}: return at module level')
+                      print(f'     {stripped}')
+                      failed = True
+          sys.exit(1 if failed else 0)
+          PYEOF
+
+      # ── 6. window.* Exposure Check ──────────────────────────────────────────
+      # Catches: functions called from inline HTML onclick attributes that are
+      # not exposed on window. These fail silently at runtime with
+      # "functionName is not defined".
+      - name: Global Exposure Check
+        run: |
+          python3 << 'PYEOF'
+          import re, os, sys
+          # Find all onclick="funcName(...)" in index.html
+          html = open('index.html').read()
+          onclick_fns = set(re.findall(r'onclick="([a-zA-Z_][a-zA-Z0-9_]*)\(', html))
+          # Find all dynamic HTML strings in JS that contain onclick
+          js_all = ''
+          for fname in os.listdir('js'):
+              if fname.endswith('.js'):
+                  js_all += open(f'js/{fname}').read() + '\n'
+          dynamic_fns = set(re.findall(r'onclick=\\"([a-zA-Z_][a-zA-Z0-9_]*)\(', js_all))
+          all_fns = onclick_fns | dynamic_fns
+          # Find all names in Object.assign(window, {...})
+          window_exposed = set(re.findall(r'Object\.assign\(window,\s*\{([^}]+)\}', js_all))
+          exposed_names = set()
+          for block in window_exposed:
+              exposed_names |= set(re.findall(r'\b([a-zA-Z_][a-zA-Z0-9_]*)\b', block))
+          # Also functions defined directly on window
+          exposed_names |= set(re.findall(r'window\.([a-zA-Z_][a-zA-Z0-9_]*)\s*=', js_all))
+          # Built-in browser functions that don't need to be exposed
+          builtins = {'alert','confirm','setTimeout','clearTimeout','location',
+                      'document','console','fetch','navigator','window','parseInt',
+                      'parseFloat','encodeURIComponent','decodeURIComponent'}
+          failed = False
+          for fn in sorted(all_fns):
+              if fn in builtins:
+                  continue
+              if fn not in exposed_names:
+                  # Check if defined at module level (not exported but still callable if exposed)
+                  if not re.search(rf'\bfunction\s+{fn}\b', js_all):
+                      print(f'WARN: {fn}() used in onclick but not found in JS')
+                  else:
+                      print(f'WARN: {fn}() used in onclick but not in Object.assign(window,...)')
+              else:
+                  print(f'OK   {fn}() exposed on window')
+          # Don't fail on this check -- it has false positives -- just warn
+          sys.exit(0)
+          PYEOF
