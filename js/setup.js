@@ -1,8 +1,8 @@
 /**
- * setup.js — First-run sheet creation and setup wizard UI.
- * No circular imports — communicates back to app.js via custom DOM events:
- *   'setup-complete'    → show main screen and init
- *   'setup-go-welcome'  → return to welcome screen
+ * setup.js -- First-run sheet creation and setup wizard UI.
+ * No circular imports -- communicates back to app.js via custom DOM events:
+ *   'setup-complete'    -> show main screen and init
+ *   'setup-go-welcome'  -> return to welcome screen
  */
 
 import { S }                from './state.js';
@@ -27,7 +27,7 @@ export async function findExistingSheet() {
   return data.files?.length ? data.files[0] : null;
 }
 
-/** Main setup flow — called after successful sign-in. */
+/** Main setup flow -- called after successful sign-in. */
 export async function runFullSetup() {
   // Dispatch to app.js to show the setup screen (avoids circular import)
   window.dispatchEvent(new CustomEvent('setup-show-screen'));
@@ -64,7 +64,7 @@ export async function runFullSetup() {
 
     log('All done!', 100);
     setStatus('setupStatus', '\ud83c\udf89 Ready!', 'ok');
-    // Tell app.js setup finished — it will show the main screen
+    // Tell app.js setup finished -- it will show the main screen
     setTimeout(() => window.dispatchEvent(new CustomEvent('setup-complete')), 1500);
 
   } catch (e) {

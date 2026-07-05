@@ -1,5 +1,5 @@
 /**
- * undo.js — 30-second undo window for the last stock change.
+ * undo.js -- 30-second undo window for the last stock change.
  * Shows a countdown toast; tapping Undo reverses the write.
  */
 
@@ -22,7 +22,7 @@ export function showUndoToast(payload, newQty) {
   if (!toast) return;
 
   const sign = payload.qtyChange > 0 ? '+' : '';
-  if (msg)  msg.textContent = sign + payload.qtyChange + ' — tap to undo';
+  if (msg)  msg.textContent = sign + payload.qtyChange + ' -- tap to undo';
   toast.classList.remove('hidden');
 
   // Reset and animate the progress bar
@@ -48,7 +48,7 @@ export async function performUndo() {
   if (!undoState) return;
   const { spreadsheetId, barcode, description, qtyChange, unit, price, newQty } = undoState;
   clearUndo();
-  setStatus('result', 'Undoing…', 'info');
+  setStatus('result', 'Undoing...', 'info');
   try {
     await ensureToken();
     const result = await writeToSheet({
@@ -57,7 +57,7 @@ export async function performUndo() {
       unit, price,
       timestamp: new Date().toLocaleString(),
     }, false);
-    setStatus('result', '↩ Undone — stock restored to ' + result.newQty, 'ok');
+    setStatus('result', '<- Undone -- stock restored to ' + result.newQty, 'ok');
     S.inventoryCache = [];
     window.dispatchEvent(new CustomEvent('update-badge'));
   } catch (e) {

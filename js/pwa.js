@@ -1,5 +1,5 @@
 /**
- * pwa.js — PWA install prompt and service worker registration.
+ * pwa.js -- PWA install prompt and service worker registration.
  * Captures the beforeinstallprompt event and shows a non-intrusive banner once.
  */
 

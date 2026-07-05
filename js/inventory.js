@@ -1,5 +1,5 @@
 /**
- * inventory.js — Inventory list view, min/max thresholds, quick-adjust
+ * inventory.js -- Inventory list view, min/max thresholds, quick-adjust
  * inline buttons, edit modal, item history, and shopping list.
  */
 
@@ -9,7 +9,7 @@ import { sheetsRead, sheetsBatchUpdate } from './api.js';
 import { ensureToken }                   from './auth.js';
 import { writeToSheet }                  from './offline.js';
 
-/* ─── Inventory list view ───────────────────────────────────────────────── */
+/* --- Inventory list view ------------------------------------------------- */
 
 export async function loadInventoryView() {
   if (!S.spreadsheetId || !S.accessToken) return;
@@ -92,7 +92,7 @@ function buildRowHtml(r) {
   if (reorder !== null && reorder > 0) threshInfo.push('order ' + reorder + ' to restock');
   const sub = barcode + (threshInfo.length ? ' \u00b7 ' + threshInfo.join(' / ') : '');
 
-  // Safe versions for inline onclick — strip/escape single quotes
+  // Safe versions for inline onclick -- strip/escape single quotes
   const sBar  = barcode.replace(/\\/g,'\\\\').replace(/'/g,"\\'");
   const sName = name.replace(/\\/g,'\\\\').replace(/'/g,"\\'");
   const sUnit = unit.replace(/\\/g,'\\\\').replace(/'/g,"\\'");
@@ -106,7 +106,7 @@ function buildRowHtml(r) {
     + '<div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px;">'
       + '<div class="inv-item-qty' + (isLow ? ' low' : '') + '">' + qty + ' <span class="inv-item-unit">' + unit + '</span></div>'
       + '<div class="inv-adj-wrap">'
-        + '<button class="inv-adj-btn minus" onclick="quickAdjust(\'' + sBar + '\',-1,this)" aria-label="Remove one">−</button>'
+        + '<button class="inv-adj-btn minus" onclick="quickAdjust(\'' + sBar + '\',-1,this)" aria-label="Remove one">\u2212</button>'
         + '<span class="inv-adj-saving" aria-live="polite"></span>'
         + '<button class="inv-adj-btn plus"  onclick="quickAdjust(\'' + sBar + '\',1,this)"  aria-label="Add one">+</button>'
         + '<button style="background:none;border:none;color:var(--muted);font-size:0.9rem;cursor:pointer;padding:2px;width:auto;margin:0;" onclick="openEditModal(\'' + sBar + '\',\'' + sName + '\',\'' + sUnit + '\',\'' + sPric + '\')" aria-label="Edit item">\u270f\ufe0f</button>'
@@ -115,7 +115,7 @@ function buildRowHtml(r) {
   + '</div>';
 }
 
-/* ─── Low stock badge + Badging API ────────────────────────────────────── */
+/* --- Low stock badge + Badging API -------------------------------------- */
 
 export function updateLowStockBadge() {
   const count = S.inventoryCache.filter(r => {
@@ -133,7 +133,7 @@ export function updateLowStockBadge() {
   }
 }
 
-/* ─── Quick inline stock adjust ─────────────────────────────────────────── */
+/* --- Quick inline stock adjust ------------------------------------------- */
 
 export async function quickAdjust(barcode, delta, btnEl) {
   if (!S.spreadsheetId) return;
@@ -169,7 +169,7 @@ export async function quickAdjust(barcode, delta, btnEl) {
   }
 }
 
-/* ─── Edit item modal ───────────────────────────────────────────────────── */
+/* --- Edit item modal ----------------------------------------------------- */
 
 export function openEditModal(barcode, name, unit, price) {
   document.querySelector('.modal-backdrop')?.remove();
@@ -234,7 +234,7 @@ export async function saveEditedItem(barcode) {
   }
 }
 
-/* ─── Min / Max threshold modal ─────────────────────────────────────────── */
+/* --- Min / Max threshold modal ------------------------------------------- */
 
 export function openMinQtyModal(barcode, name, qty) {
   document.querySelector('.modal-backdrop')?.remove();
@@ -311,7 +311,7 @@ async function writeThresholdToSheet(barcode, min, max) {
 
 export const saveMinQty = (b, v) => saveThreshold(b, v, 0);
 
-/* ─── Shopping list (Reorder tab) ───────────────────────────────────────── */
+/* --- Shopping list (Reorder tab) ----------------------------------------- */
 
 export function renderShoppingList() {
   const container = $('shopping-list');
@@ -353,7 +353,7 @@ export function renderShoppingList() {
   }).join('');
 }
 
-/* ─── Item history (last 10 transactions) ───────────────────────────────── */
+/* --- Item history (last 10 transactions) --------------------------------- */
 
 export async function openItemHistory(barcode, name) {
   document.querySelector('.modal-backdrop')?.remove();
@@ -401,7 +401,7 @@ export async function openItemHistory(barcode, name) {
   }
 }
 
-/* ─── Wire search, refresh, and init ───────────────────────────────────── */
+/* --- Wire search, refresh, and init ------------------------------------- */
 
 export function initInventory() {
   $('inv-search')?.addEventListener('input', function () {

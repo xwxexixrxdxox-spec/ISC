@@ -1,5 +1,5 @@
 /**
- * scanner.js — Camera scanning, product lookup, and vendor price chain.
+ * scanner.js -- Camera scanning, product lookup, and vendor price chain.
  *
  * Vendor lookup order:
  *   1. UPCitemdb free API (offers with merchant + price)
@@ -20,8 +20,8 @@ const MISS_TOLERANCE = 5;
 
 export function initScanner() {
   document.getElementById('scanBtn')?.addEventListener('click', () => {
-    if (scanning) { stopScan(); document.getElementById('scanBtn').textContent = '📷 Scan Barcode'; }
-    else          { startScan(); document.getElementById('scanBtn').textContent = '⏹ Stop Scanning'; }
+    if (scanning) { stopScan(); document.getElementById('scanBtn').textContent = '[camera] Scan Barcode'; }
+    else          { startScan(); document.getElementById('scanBtn').textContent = '[stop] Stop Scanning'; }
   });
 
   document.getElementById('barcode')?.addEventListener('change', () => {
@@ -81,14 +81,14 @@ async function scanLoop() {
       if (code !== lastCode) { lastCode = code; codeCount = 1; hideVendorPanel(); }
       else codeCount++;
 
-      setStatus('cameraStatus', `Hold steady… ${Math.round((codeCount / CONFIRM_READS) * 100)}%`, 'info');
+      setStatus('cameraStatus', `Hold steady... ${Math.round((codeCount / CONFIRM_READS) * 100)}%`, 'info');
 
       if (codeCount >= CONFIRM_READS) {
         lastCode = null; codeCount = 0; missCount = 0;
         document.getElementById('barcode').value = code;
         stopScan();
-        document.getElementById('scanBtn').textContent = '📷 Scan Barcode';
-        setStatus('cameraStatus', `Scanned: ${code} (${fmt || 'barcode'}) — looking up…`, 'info');
+        document.getElementById('scanBtn').textContent = '[camera] Scan Barcode';
+        setStatus('cameraStatus', `Scanned: ${code} (${fmt || 'barcode'}) -- looking up...`, 'info');
         lookupBarcode(code);
         return;
       }
@@ -96,7 +96,7 @@ async function scanLoop() {
       missCount++;
       if (missCount > MISS_TOLERANCE) { lastCode = null; codeCount = 0; missCount = 0; }
     }
-  } catch (e) { /* frame decode failed — keep looping */ }
+  } catch (e) { /* frame decode failed -- keep looping */ }
   requestAnimationFrame(scanLoop);
 }
 
@@ -129,11 +129,11 @@ export async function lookupBarcode(code) {
       }
     }
     setStatus('cameraStatus',
-      found ? 'Found public data — review and adjust before saving.'
-            : 'No public match — fill in the details below.',
+      found ? 'Found public data -- review and adjust before saving.'
+            : 'No public match -- fill in the details below.',
       found ? 'ok' : 'info');
   } catch (e) {
-    setStatus('cameraStatus', 'Lookup failed — fill in details manually.', 'warn');
+    setStatus('cameraStatus', 'Lookup failed -- fill in details manually.', 'warn');
   }
 
   // Trigger vendor price lookup in parallel (non-blocking)
@@ -141,7 +141,7 @@ export async function lookupBarcode(code) {
     .catch(() => {});
 }
 
-/** ── Vendor Price Lookup ──────────────────────────────────────────────────── */
+/** -- Vendor Price Lookup ---------------------------------------------------- */
 
 export async function lookupVendorPrices(barcode, productName) {
   const panel    = document.getElementById('vendor-panel');
@@ -151,13 +151,13 @@ export async function lookupVendorPrices(barcode, productName) {
   if (!panel) return;
 
   panel.style.display = 'block';
-  list.innerHTML = '<div style="padding:10px;color:var(--muted);font-size:0.8rem;">Searching vendors…</div>';
+  list.innerHTML = '<div style="padding:10px;color:var(--muted);font-size:0.8rem;">Searching vendors...</div>';
   if (status) status.textContent = '';
 
   const searchQ = encodeURIComponent(productName || barcode);
   if (shopLink) shopLink.href = `https://www.google.com/search?tbm=shop&q=${searchQ}`;
 
-  // Session cache — same barcode won't burn daily API limit on re-scan
+  // Session cache -- same barcode won't burn daily API limit on re-scan
   const cacheKey = 'vp_' + barcode;
   const cached   = sessionStorage.getItem(cacheKey);
   if (cached) { renderVendorOffers(JSON.parse(cached), list, status); return; }
@@ -207,26 +207,26 @@ export async function lookupVendorPrices(barcode, productName) {
     renderVendorOffers(offers, list, status);
 
   } catch (e) {
-    list.innerHTML = '<div style="padding:10px;color:var(--muted);font-size:0.8rem;">Vendor lookup unavailable — try the search link above.</div>';
+    list.innerHTML = '<div style="padding:10px;color:var(--muted);font-size:0.8rem;">Vendor lookup unavailable -- try the search link above.</div>';
   }
 }
 
 function renderVendorOffers(offers, list, status) {
   if (!offers?.length) {
-    list.innerHTML = '<div style="padding:10px;color:var(--muted);font-size:0.8rem;">No vendor listings found — try the search link above.</div>';
+    list.innerHTML = '<div style="padding:10px;color:var(--muted);font-size:0.8rem;">No vendor listings found -- try the search link above.</div>';
     return;
   }
   list.innerHTML = offers.map((o, i) => {
     const freeShip = o.shipping === 0 ? '<span class="vendor-item-ship">free ship</span>' : '';
     return `<div class="vendor-item${i === 0 ? ' vendor-best' : ''}"
       onclick="selectVendorPrice(${o.price},'${o.merchant.replace(/'/g,"\\'")}')">
-      <span class="vendor-item-name">${i === 0 ? '🏆 ' : ''}${o.merchant}</span>
+      <span class="vendor-item-name">${i === 0 ? '[best] ' : ''}${o.merchant}</span>
       <span class="vendor-item-cond">${o.condition}</span>
       <div style="text-align:right;">
         <span class="vendor-item-price">$${o.price.toFixed(2)}</span>${freeShip}
       </div></div>`;
   }).join('');
-  if (status) status.textContent = offers.length + ' vendor' + (offers.length !== 1 ? 's' : '') + ' found · cheapest first';
+  if (status) status.textContent = offers.length + ' vendor' + (offers.length !== 1 ? 's' : '') + ' found . cheapest first';
 }
 
 export function selectVendorPrice(price, merchant) {

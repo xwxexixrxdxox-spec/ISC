@@ -1,5 +1,5 @@
 /**
- * state.js — Shared application state and constants.
+ * state.js -- Shared application state and constants.
  * Imported by every other module that needs to read or write state.
  */
 

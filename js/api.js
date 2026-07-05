@@ -1,5 +1,5 @@
 /**
- * api.js — All Google Sheets API calls.
+ * api.js -- All Google Sheets API calls.
  * Handles auth headers, retry, and per-row formatting.
  */
 
@@ -33,7 +33,7 @@ export async function sheetsRead(spreadsheetId, range) {
       { headers: { 'Authorization': 'Bearer ' + S.accessToken } }
     );
     if (res.status === 401) throw new Error('TOKEN_EXPIRED');
-    if (res.status === 429) throw new Error('429 Rate limited by Google — retrying');
+    if (res.status === 429) throw new Error('429 Rate limited by Google -- retrying');
     if (!res.ok) throw new Error('Read failed ' + res.status);
     return res.json();
   });
@@ -58,7 +58,7 @@ export async function sheetsAppend(spreadsheetId, sheetName, row) {
       }
     );
     if (res.status === 401) throw new Error('TOKEN_EXPIRED');
-    if (res.status === 429) throw new Error('429 Rate limited — retrying');
+    if (res.status === 429) throw new Error('429 Rate limited -- retrying');
     if (!res.ok) throw new Error('Append failed ' + res.status);
     const data = await res.json();
 
@@ -87,7 +87,7 @@ export async function sheetsBatchUpdate(spreadsheetId, data) {
       }
     );
     if (res.status === 401) throw new Error('TOKEN_EXPIRED');
-    if (res.status === 429) throw new Error('429 Rate limited — retrying');
+    if (res.status === 429) throw new Error('429 Rate limited -- retrying');
     if (!res.ok) throw new Error('Update failed ' + res.status);
     return res.json();
   });

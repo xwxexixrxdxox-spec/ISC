@@ -1,5 +1,5 @@
 /**
- * offline.js — Offline queue and the core writeToSheet function.
+ * offline.js -- Offline queue and the core writeToSheet function.
  * All stock changes flow through writeToSheet regardless of online status.
  */
 
@@ -36,10 +36,10 @@ export function updateOfflineBar() {
   const bar = document.getElementById('offline-bar');
   if (!bar) return;
   if (!isOnline()) {
-    bar.textContent = '📡 You are offline — changes will sync when connection returns';
+    bar.textContent = '[offline] You are offline -- changes will sync when connection returns';
     bar.style.display = 'block';
   } else if (S.offlineQueue.length) {
-    bar.textContent = `⏳ Syncing ${S.offlineQueue.length} queued item(s)…`;
+    bar.textContent = `[loading] Syncing ${S.offlineQueue.length} queued item(s)...`;
     bar.style.display = 'block';
   } else {
     bar.style.display = 'none';
@@ -71,7 +71,7 @@ export async function writeToSheet(payload, allowQueue = true) {
     if (String(rows[i][0] || '').trim() === barcode) { rowIndex = i; break; }
   }
 
-  // getThreshold imported from state.js — no circular dep
+  // getThreshold imported from state.js -- no circular dep
   const t = getThreshold(barcode);
 
   let newQty;
@@ -98,7 +98,7 @@ export async function writeToSheet(payload, allowQueue = true) {
     await sheetsBatchUpdate(spreadsheetId, updates);
   }
 
-  // Audit log — non-blocking, failure does not break the write
+  // Audit log -- non-blocking, failure does not break the write
   try {
     const changeLabel = (qtyChange > 0 ? '+' : '') + qtyChange;
     await sheetsAppend(spreadsheetId, 'History', [

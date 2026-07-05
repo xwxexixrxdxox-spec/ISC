@@ -1,19 +1,19 @@
 /**
- * app.js — Main entry point.
+ * app.js -- Main entry point.
  * Handles screen routing, tab switching, submit, sheet opener, and boot.
  *
  * Module map:
- *   state.js     — S object, CLIENT_ID, localStorage helpers
- *   utils.js     — $(), setStatus(), withRetry()
- *   api.js       — Sheets API (read, append, batchUpdate, row formatting)
- *   auth.js      — OAuth, token refresh, ensureToken
- *   setup.js     — Sheet creation, Drive search, setup wizard
- *   offline.js   — Offline queue, writeToSheet, flushOfflineQueue
- *   scanner.js   — Camera, barcode detection, product + vendor lookup
- *   inventory.js — List view, quick adjust, edit modal, thresholds
- *   undo.js      — 30-second undo with countdown toast
- *   pwa.js       — Install prompt, service worker registration
- *   app.js       — This file: routing, submit, boot
+ *   state.js     -- S object, CLIENT_ID, localStorage helpers
+ *   utils.js     -- $(), setStatus(), withRetry()
+ *   api.js       -- Sheets API (read, append, batchUpdate, row formatting)
+ *   auth.js      -- OAuth, token refresh, ensureToken
+ *   setup.js     -- Sheet creation, Drive search, setup wizard
+ *   offline.js   -- Offline queue, writeToSheet, flushOfflineQueue
+ *   scanner.js   -- Camera, barcode detection, product + vendor lookup
+ *   inventory.js -- List view, quick adjust, edit modal, thresholds
+ *   undo.js      -- 30-second undo with countdown toast
+ *   pwa.js       -- Install prompt, service worker registration
+ *   app.js       -- This file: routing, submit, boot
  */
 
 import { S, CLIENT_ID, getThreshold } from './state.js';
@@ -31,7 +31,7 @@ import {
 import { showUndoToast, initUndo }    from './undo.js';
 import { initInstallBanner, registerServiceWorker } from './pwa.js';
 
-/* ─── Error Boundary ──────────────────────────────────────────────────────── */
+/* --- Error Boundary -------------------------------------------------------- */
 window.addEventListener('error', e => {
   console.error('[Global]', e.message);
   const el = document.getElementById('error-recovery');
@@ -45,7 +45,7 @@ window.addEventListener('unhandledrejection', e => {
   if (el && mg) { mg.textContent = e.reason?.message || 'A background operation failed.'; el.style.display = 'block'; setTimeout(() => { el.style.display = 'none'; }, 6000); }
 });
 
-/* ─── Screen Router ───────────────────────────────────────────────────────── */
+/* --- Screen Router --------------------------------------------------------- */
 const SCREENS = ['screen-welcome', 'screen-setup', 'screen-main'];
 
 export function show(id) {
@@ -70,7 +70,7 @@ function switchTab(tab) {
   if (tab === 'list') renderShoppingList();
 }
 
-/* ─── Init ────────────────────────────────────────────────────────────────── */
+/* --- Init ------------------------------------------------------------------ */
 function init() {
   if (S.sheetUrl && !S.spreadsheetId) {
     const m = S.sheetUrl.match(/\/spreadsheets\/d\/([a-zA-Z0-9_-]+)/);
@@ -80,8 +80,8 @@ function init() {
   show('screen-welcome');
 }
 
-/* ─── Welcome Screen ──────────────────────────────────────────────────────── */
-// ─── Join shared sheet ────────────────────────────────────────────────────────
+/* --- Welcome Screen -------------------------------------------------------- */
+// --- Join shared sheet --------------------------------------------------------
 document.getElementById('joinSheetBtn')?.addEventListener('click', () => {
   const raw = (document.getElementById('joinSheetUrl')?.value || '').trim();
   if (!raw) { setStatus('joinStatus', 'Paste a Google Sheets URL or spreadsheet ID.', 'err'); return; }
@@ -89,30 +89,30 @@ document.getElementById('joinSheetBtn')?.addEventListener('click', () => {
   const match = raw.match(/\/spreadsheets\/d\/([a-zA-Z0-9_-]+)/);
   const spreadsheetId = match ? match[1] : raw;
   if (!/^[a-zA-Z0-9_-]{20,}$/.test(spreadsheetId)) {
-    setStatus('joinStatus', 'That doesn’t look like a valid spreadsheet URL or ID.', 'err');
+    setStatus('joinStatus', 'That doesn't look like a valid spreadsheet URL or ID.', 'err');
     return;
   }
-  setStatus('joinStatus', 'Signing in to connect…', 'info');
-  // Sign in then connect to the given sheet — skip creation entirely
+  setStatus('joinStatus', 'Signing in to connect...', 'info');
+  // Sign in then connect to the given sheet -- skip creation entirely
   if (!window.google?.accounts?.oauth2) {
-    setStatus('joinStatus', 'Google still loading — please wait a moment.', 'warn'); return;
+    setStatus('joinStatus', 'Google still loading -- please wait a moment.', 'warn'); return;
   }
   const btn = document.getElementById('joinSheetBtn');
-  if (btn) { btn.disabled = true; btn.textContent = 'Connecting…'; }
+  if (btn) { btn.disabled = true; btn.textContent = 'Connecting...'; }
   requestToken(() => {
     const sheetUrl = 'https://docs.google.com/spreadsheets/d/' + spreadsheetId;
     localStorage.setItem('sheetUrl', sheetUrl);
     localStorage.setItem('spreadsheetId', spreadsheetId);
     S.sheetUrl = sheetUrl;
     S.spreadsheetId = spreadsheetId;
-    setStatus('joinStatus', '✅ Connected! Loading…', 'ok');
+    setStatus('joinStatus', '(done) Connected! Loading...', 'ok');
     setTimeout(() => { show('screen-main'); initMain(); }, 800);
   });
 });
 
 document.getElementById('connectGoogleBtn')?.addEventListener('click', () => {
   if (!window.google?.accounts?.oauth2) {
-    setStatus('connectStatus', 'Still loading Google services — please wait and try again.', 'warn');
+    setStatus('connectStatus', 'Still loading Google services -- please wait and try again.', 'warn');
     return;
   }
   const btn = document.getElementById('connectGoogleBtn');
@@ -125,7 +125,7 @@ document.getElementById('connectGoogleBtn')?.addEventListener('click', () => {
   }
 });
 
-/* ─── Main Screen ─────────────────────────────────────────────────────────── */
+/* --- Main Screen ----------------------------------------------------------- */
 export function initMain() {
   [$('sheetLink'), $('sheetLinkFull')].forEach(el => {
     if (!el) return;
@@ -134,7 +134,7 @@ export function initMain() {
   });
 
   document.getElementById('resetBtn')?.addEventListener('click', () => {
-    if (confirm('Re-authenticate with Google?\n\nKeeps your existing sheet — just refreshes sign-in.')) {
+    if (confirm('Re-authenticate with Google?\n\nKeeps your existing sheet -- just refreshes sign-in.')) {
       S.accessToken = null;
       location.reload();
     }
@@ -152,7 +152,7 @@ export function initMain() {
   document.getElementById('tab-inv')?.addEventListener('click',   () => switchTab('inv'));
   document.getElementById('tab-list')?.addEventListener('click',  () => switchTab('list'));
 
-  // Scan FAB on inventory tab — scans and pre-fills the scan pane
+  // Scan FAB on inventory tab -- scans and pre-fills the scan pane
   document.getElementById('inv-scan-fab')?.addEventListener('click', () => {
     switchTab('scan');
     document.getElementById('scanBtn')?.click();
@@ -189,7 +189,7 @@ async function shareShoppingList() {
     const { min, max } = getThreshold(String(r[0]||''));
     const qty     = Number(r[2]) || 0;
     const reorder = max > 0 ? (max - qty) : (min - qty + min);
-    return ('• ' + (r[1]||r[0]) + ' — order ' + (reorder > 0 ? reorder : min) + ' ' + (r[3]||'')).trim();
+    return ('- ' + (r[1]||r[0]) + ' -- order ' + (reorder > 0 ? reorder : min) + ' ' + (r[3]||'')).trim();
   });
   const text = 'Reorder list:\n' + lines.join('\n');
   if (navigator.share) {
@@ -199,7 +199,7 @@ async function shareShoppingList() {
   }
 }
 
-/* ─── Submit Handler ──────────────────────────────────────────────────────── */
+/* --- Submit Handler -------------------------------------------------------- */
 async function submitChange(direction, isRetry) {
   const spreadsheetId = S.spreadsheetId;
   const barcode       = document.getElementById('barcode')?.value.trim()     || '';
@@ -252,8 +252,8 @@ async function submitChange(direction, isRetry) {
 document.getElementById('addBtn')?.addEventListener('click', () => submitChange('add'));
 document.getElementById('subBtn')?.addEventListener('click', () => submitChange('subtract'));
 
-/* ─── Expose globals for inline onclick attributes in dynamic HTML ─────────
-   ES modules are scoped — functions used in onclick="..." strings on
+/* --- Expose globals for inline onclick attributes in dynamic HTML ---------
+   ES modules are scoped -- functions used in onclick="..." strings on
    dynamically generated rows must be attached to window explicitly.       */
 Object.assign(window, {
   openMinQtyModal,
@@ -265,7 +265,7 @@ Object.assign(window, {
   openItemHistory,
 });
 
-/* ─── Self-Healing Service Worker ────────────────────────────────────────── */
+/* --- Self-Healing Service Worker ------------------------------------------ */
 (function swSelfHeal() {
   if (!('serviceWorker' in navigator)) return;
   const CURRENT = 'isc-v5';
@@ -280,7 +280,7 @@ Object.assign(window, {
   });
 })();
 
-/* ─── Boot ────────────────────────────────────────────────────────────────── */
+/* --- Boot ------------------------------------------------------------------ */
 window.addEventListener('load', () => {
   const btn = document.getElementById('connectGoogleBtn');
   if (btn) { btn.disabled = true; btn.innerHTML = '<span style="font-size:1.1rem;">G</span> &nbsp;Loading\u2026'; }
@@ -313,7 +313,7 @@ window.addEventListener('load', () => {
   }, 8000);
 });
 
-// Setup wizard events — avoids circular import between setup.js and app.js
+// Setup wizard events -- avoids circular import between setup.js and app.js
 window.addEventListener('setup-show-screen', () => show('screen-setup'));
 window.addEventListener('setup-complete',    () => { show('screen-main'); initMain(); });
 window.addEventListener('setup-go-welcome',  () => show('screen-welcome'));

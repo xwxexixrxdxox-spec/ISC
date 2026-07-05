@@ -1,5 +1,5 @@
 /**
- * auth.js — Google Identity Services OAuth flow.
+ * auth.js -- Google Identity Services OAuth flow.
  * Token request, silent background refresh, and ensureToken helper.
  */
 
@@ -20,7 +20,7 @@ export function requestToken(callback) {
       callback:  resp => {
         if (resp.error) {
           const msg =
-            resp.error === 'popup_closed_by_user' ? 'Sign-in window was closed — tap the button again.' :
+            resp.error === 'popup_closed_by_user' ? 'Sign-in window was closed -- tap the button again.' :
             resp.error === 'access_denied'         ? 'Access denied. Please allow the required permissions.' :
             'Sign-in failed: ' + resp.error;
           setStatus('connectStatus', msg, 'err');

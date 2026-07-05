@@ -1,6 +1,6 @@
 /**
- * utils.js — Pure utility functions with no side effects.
- * No imports from other app modules — safe to import anywhere.
+ * utils.js -- Pure utility functions with no side effects.
+ * No imports from other app modules -- safe to import anywhere.
  */
 
 /** Shorthand for getElementById */
@@ -30,7 +30,7 @@ export async function withRetry(fn, maxAttempts = 3, baseDelayMs = 1000) {
         || e.message.includes('rate limit') || e.message.includes('Service Unavailable');
       if (!retryable) throw e;
       const delay = baseDelayMs * Math.pow(2, attempt);
-      console.warn(`[Retry] Attempt ${attempt + 1} failed: ${e.message}. Waiting ${delay}ms…`);
+      console.warn(`[Retry] Attempt ${attempt + 1} failed: ${e.message}. Waiting ${delay}ms...`);
       await new Promise(r => setTimeout(r, delay));
     }
   }
