@@ -268,14 +268,17 @@
 })();
 </script>
 
+<!-- Module load error handler — must come before the module script -->
+<script>
+function onModuleError() {
+  var el = document.getElementById('diag-js');
+  if (el) el.innerHTML = 'JS: <span style="color:#ef4444;">&#x2717; Module failed to load &mdash; open browser console (F12) for details</span>';
+  var panel = document.getElementById('diag-panel');
+  if (panel) { panel.style.display = 'block'; panel.style.background = 'rgba(239,68,68,0.08)'; panel.style.padding = '12px'; panel.style.borderRadius = '8px'; }
+}
+</script>
+
 <!-- ES module entry point -->
-<script type="module" src="./js/app.js" onerror="
-  document.getElementById('diag-js').innerHTML =
-    'JS: <span style=\'color:#ef4444;\'>✗ Module load failed — check browser console (F12)</span>';
-  document.getElementById('diag-panel').style.display = 'block';
-  document.getElementById('diag-panel').style.background = 'rgba(239,68,68,0.1)';
-  document.getElementById('diag-panel').style.padding = '12px';
-  document.getElementById('diag-panel').style.borderRadius = '8px';
-"></script>
+<script type="module" src="./js/app.js" onerror="onModuleError()"></script>
 </body>
 </html>
