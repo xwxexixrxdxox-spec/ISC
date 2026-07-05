@@ -26,6 +26,7 @@ import {
   loadInventoryView, updateLowStockBadge,
   openMinQtyModal, openEditModal, saveEditedItem,
   saveThreshold, quickAdjust, initInventory,
+  renderShoppingList, openItemHistory,
 } from './inventory.js';
 import { showUndoToast, initUndo }    from './undo.js';
 import { initInstallBanner, registerServiceWorker } from './pwa.js';
@@ -56,12 +57,17 @@ export function show(id) {
 
 function switchTab(tab) {
   S.currentTab = tab;
-  ['scan','inv'].forEach(t => {
-    document.getElementById('tab-' + t)?.classList.toggle('active', tab === t);
-    document.getElementById('tab-' + t)?.setAttribute('aria-selected', tab === t ? 'true' : 'false');
+  ['scan','inv','list'].forEach(t => {
+    document.getElementById('tab-'  + t)?.classList.toggle('active', tab === t);
+    document.getElementById('tab-'  + t)?.setAttribute('aria-selected', tab === t ? 'true' : 'false');
     document.getElementById('pane-' + t)?.classList.toggle('hidden', tab !== t);
   });
-  if (tab === 'inv') loadInventoryView();
+  // Show scan FAB only on inventory tab
+  const fab = document.getElementById('inv-scan-fab');
+  if (fab) fab.style.display = tab === 'inv' ? 'flex' : 'none';
+
+  if (tab === 'inv')  loadInventoryView();
+  if (tab === 'list') renderShoppingList();
 }
 
 /* ─── Init ────────────────────────────────────────────────────────────────── */
@@ -75,6 +81,35 @@ function init() {
 }
 
 /* ─── Welcome Screen ──────────────────────────────────────────────────────── */
+// ─── Join shared sheet ────────────────────────────────────────────────────────
+document.getElementById('joinSheetBtn')?.addEventListener('click', () => {
+  const raw = (document.getElementById('joinSheetUrl')?.value || '').trim();
+  if (!raw) { setStatus('joinStatus', 'Paste a Google Sheets URL or spreadsheet ID.', 'err'); return; }
+  // Extract spreadsheet ID from URL or use as-is
+  const match = raw.match(/\/spreadsheets\/d\/([a-zA-Z0-9_-]+)/);
+  const spreadsheetId = match ? match[1] : raw;
+  if (!/^[a-zA-Z0-9_-]{20,}$/.test(spreadsheetId)) {
+    setStatus('joinStatus', 'That doesn’t look like a valid spreadsheet URL or ID.', 'err');
+    return;
+  }
+  setStatus('joinStatus', 'Signing in to connect…', 'info');
+  // Sign in then connect to the given sheet — skip creation entirely
+  if (!window.google?.accounts?.oauth2) {
+    setStatus('joinStatus', 'Google still loading — please wait a moment.', 'warn'); return;
+  }
+  const btn = document.getElementById('joinSheetBtn');
+  if (btn) { btn.disabled = true; btn.textContent = 'Connecting…'; }
+  requestToken(() => {
+    const sheetUrl = 'https://docs.google.com/spreadsheets/d/' + spreadsheetId;
+    localStorage.setItem('sheetUrl', sheetUrl);
+    localStorage.setItem('spreadsheetId', spreadsheetId);
+    S.sheetUrl = sheetUrl;
+    S.spreadsheetId = spreadsheetId;
+    setStatus('joinStatus', '✅ Connected! Loading…', 'ok');
+    setTimeout(() => { show('screen-main'); initMain(); }, 800);
+  });
+});
+
 document.getElementById('connectGoogleBtn')?.addEventListener('click', () => {
   if (!window.google?.accounts?.oauth2) {
     setStatus('connectStatus', 'Still loading Google services — please wait and try again.', 'warn');
@@ -113,8 +148,18 @@ export function initMain() {
     }
   });
 
-  document.getElementById('tab-scan')?.addEventListener('click', () => switchTab('scan'));
-  document.getElementById('tab-inv')?.addEventListener('click',  () => switchTab('inv'));
+  document.getElementById('tab-scan')?.addEventListener('click',  () => switchTab('scan'));
+  document.getElementById('tab-inv')?.addEventListener('click',   () => switchTab('inv'));
+  document.getElementById('tab-list')?.addEventListener('click',  () => switchTab('list'));
+
+  // Scan FAB on inventory tab — scans and pre-fills the scan pane
+  document.getElementById('inv-scan-fab')?.addEventListener('click', () => {
+    switchTab('scan');
+    document.getElementById('scanBtn')?.click();
+  });
+
+  // Share shopping list button
+  document.getElementById('share-list-btn')?.addEventListener('click', shareShoppingList);
 
   updateOfflineBar();
   updateLowStockBadge();
@@ -125,7 +170,30 @@ export function initMain() {
   initScanner();
   initInventory();
 
-  // Cross-module events (replaces circular imports)
+  /** Share the current shopping list via Web Share API */
+async function shareShoppingList() {
+  const items = S.inventoryCache.filter(r => {
+    const { min } = getThreshold(String(r[0]||''));
+    return min > 0 && (Number(r[2])||0) <= min;
+  });
+  if (!items.length) { alert('No items below minimum threshold.'); return; }
+  const lines = items.map(r => {
+    const { min, max } = getThreshold(String(r[0]||''));
+    const qty     = Number(r[2]) || 0;
+    const reorder = max > 0 ? (max - qty) : (min - qty + min);
+    return `• ${r[1]||r[0]} — order ${reorder > 0 ? reorder : min} ${r[3]||''}`.trim();
+  });
+  const text = 'Reorder list:
+' + lines.join('
+');
+  if (navigator.share) {
+    navigator.share({ title: 'Inventory Reorder List', text }).catch(() => {});
+  } else {
+    navigator.clipboard?.writeText(text).then(() => alert('List copied to clipboard!'));
+  }
+}
+
+// Cross-module events (replaces circular imports)
   window.addEventListener('show-undo', e => showUndoToast(e.detail.payload, e.detail.newQty));
   window.addEventListener('update-badge', () => updateLowStockBadge());
 
@@ -196,6 +264,7 @@ Object.assign(window, {
   openEditModal,
   saveEditedItem,
   selectVendorPrice,
+  openItemHistory,
 });
 
 /* ─── Self-Healing Service Worker ────────────────────────────────────────── */

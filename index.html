@@ -32,6 +32,20 @@
       <span style="font-size:1.1rem;">G</span> &nbsp;Sign in with Google
     </button>
     <div id="connectStatus"></div>
+
+    <!-- Join an existing shared sheet -->
+    <div style="margin-top:16px;padding-top:16px;border-top:1px solid var(--border);">
+      <p style="text-align:center;margin-bottom:8px;font-size:0.8rem;">
+        <b style="color:var(--text);">Joining a team?</b> Enter your shared sheet URL:
+      </p>
+      <input id="joinSheetUrl" placeholder="https://docs.google.com/spreadsheets/d/…"
+        aria-label="Shared spreadsheet URL" spellcheck="false" style="font-size:0.8rem;">
+      <button class="btn-secondary" id="joinSheetBtn" style="margin-top:6px;font-size:0.85rem;padding:10px;">
+        🔗 Connect to this Sheet
+      </button>
+      <div id="joinStatus"></div>
+    </div>
+
     <p style="text-align:center;margin-top:14px;margin-bottom:0;">
       <a href="./privacy-policy.html" target="_blank" style="color:var(--muted);font-size:0.78rem;text-decoration:none;">Privacy Policy</a>
     </p>
@@ -161,17 +175,37 @@
       </div>
       <div style="font-size:0.75rem;color:var(--muted);margin-bottom:8px;">
         <span id="inv-count"></span>
-        <span style="margin-left:8px;">· Tap item to set low-stock alert</span>
+        <span style="margin-left:8px;">· Tap item name to set alert · ✏️ to edit · ±1 to adjust</span>
       </div>
       <div id="inv-loading" style="display:none;text-align:center;color:var(--muted);padding:20px;font-size:0.85rem;">Loading…</div>
-      <div id="inv-list"></div>
+      <div id="inv-list" role="list"></div>
+    </div>
+    <!-- Scan FAB for inventory tab -->
+    <button id="inv-scan-fab" aria-label="Scan barcode from inventory"
+      style="position:fixed;bottom:76px;right:16px;width:52px;height:52px;border-radius:50%;
+             background:var(--blue);color:white;border:none;font-size:1.4rem;cursor:pointer;
+             box-shadow:0 4px 16px rgba(0,0,0,0.4);z-index:200;display:none;
+             align-items:center;justify-content:center;">📷</button>
+  </div>
+
+  <!-- ── Shopping list pane ── -->
+  <div id="pane-list" class="hidden">
+    <div class="card" style="padding:12px;">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
+        <div style="font-size:0.85rem;font-weight:600;">Items to reorder</div>
+        <button class="btn-secondary btn-sm" id="share-list-btn" style="width:auto;padding:7px 12px;margin:0;">📤 Share</button>
+      </div>
+      <div id="list-empty" style="display:none;text-align:center;color:var(--muted);padding:32px 0;font-size:0.9rem;">
+        ✅ All stock levels are above minimum thresholds
+      </div>
+      <div id="shopping-list" role="list"></div>
     </div>
   </div>
 
 </div><!-- /screen-main -->
 
 <!-- ─── Bottom Navigation (main screen only) ──────────────────────────── -->
-<nav id="bottom-nav" style="display:none;">
+<nav id="bottom-nav" style="display:none;" role="tablist">
   <button class="nav-btn active" id="tab-scan" role="tab" aria-selected="true" aria-controls="pane-scan">
     <span class="icon">📷</span>
     <span>Scan</span>
@@ -179,6 +213,10 @@
   <button class="nav-btn" id="tab-inv" role="tab" aria-selected="false" aria-controls="pane-inv">
     <span class="icon">📦</span>
     <span>Inventory <span class="badge" id="low-stock-badge" style="display:none;">0</span></span>
+  </button>
+  <button class="nav-btn" id="tab-list" role="tab" aria-selected="false" aria-controls="pane-list">
+    <span class="icon">📋</span>
+    <span>Reorder</span>
   </button>
 </nav>
 

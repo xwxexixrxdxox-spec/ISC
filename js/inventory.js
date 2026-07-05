@@ -131,6 +131,12 @@ export function updateLowStockBadge() {
   }).length;
   const badge = $('low-stock-badge');
   if (badge) { badge.textContent = count; badge.style.display = count > 0 ? 'inline-flex' : 'none'; }
+
+  // App icon badge (shows on home screen when installed as PWA)
+  if ('setAppBadge' in navigator) {
+    if (count > 0) navigator.setAppBadge(count).catch(() => {});
+    else           navigator.clearAppBadge().catch(() => {});
+  }
 }
 
 /** ── Quick inline adjust ───────────────────────────────────────────────── */
@@ -258,7 +264,9 @@ export function openMinQtyModal(barcode, name, qty) {
       <div id="threshold-hint" style="font-size:0.72rem;color:var(--muted);margin-top:6px;line-height:1.5;" aria-live="polite"></div>
       <div class="row" style="margin-top:12px;">
         <button class="btn-secondary btn-sm" onclick="this.closest('.modal-backdrop').remove()">Cancel</button>
-        <button class="btn-green btn-sm" onclick="saveThreshold('${barcode.replace(/'/g,"\\'")}', document.getElementById('minQtyInput').value, document.getElementById('maxQtyInput').value)">Save</button>
+        <button class="btn-outline btn-sm" onclick="openItemHistory('" + barcode.replace(/'/g, "\\'") + "','" + name.replace(/'/g, "\\'") + "')">📋 History</button>
+        <button class="btn-outline btn-sm" onclick="openItemHistory('" + barcode + "','" + name + "')">📋 History</button>
+        <button class="btn-green btn-sm" onclick="saveThreshold('" + barcode.replace(/'/g,\"\\\'\") + "', document.getElementById('minQtyInput').value, document.getElementById('maxQtyInput').value)">Save</button>
       </div>
     </div>`;
   modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
@@ -321,4 +329,111 @@ export function initInventory() {
     S.inventoryCache = [];
     loadInventoryView();
   });
+}
+
+/** ── Shopping list (Reorder tab) ───────────────────────────────────────── */
+
+export function renderShoppingList() {
+  const container = document.getElementById('shopping-list');
+  const empty     = document.getElementById('list-empty');
+  if (!container) return;
+
+  const lowItems = S.inventoryCache.filter(r => {
+    const { min } = getThreshold(String(r[0]||''));
+    return min > 0 && (Number(r[2])||0) <= min;
+  }).sort((a, b) => {
+    // Most urgently depleted first (qty furthest below min as % of min)
+    const { min: am } = getThreshold(String(a[0]||''));
+    const { min: bm } = getThreshold(String(b[0]||''));
+    const aRatio = am > 0 ? (Number(a[2])||0) / am : 1;
+    const bRatio = bm > 0 ? (Number(b[2])||0) / bm : 1;
+    return aRatio - bRatio;
+  });
+
+  if (empty) empty.style.display = lowItems.length ? 'none' : 'block';
+
+  if (!lowItems.length) { container.innerHTML = ''; return; }
+
+  container.innerHTML = lowItems.map(r => {
+    const barcode = String(r[0]||'');
+    const name    = String(r[1]||barcode||'—');
+    const qty     = Number(r[2])||0;
+    const unit    = String(r[3]||'');
+    const { min, max } = getThreshold(barcode);
+    const reorder = max > 0 ? (max - qty) : (min * 2 - qty);
+    const pct     = min > 0 ? Math.round((qty / min) * 100) : 0;
+
+    return `<div class="shop-item" role="listitem">
+      <div>
+        <div class="shop-item-name">${name}</div>
+        <div class="shop-item-bc">${barcode} &middot; have ${qty}${unit ? ' '+unit : ''} &middot; min ${min}</div>
+      </div>
+      <div class="shop-item-right">
+        <div class="shop-order-qty">${reorder > 0 ? reorder : min}</div>
+        <div class="shop-order-lbl">${unit||'units'} to order</div>
+        <div style="font-size:0.65rem;color:var(--muted);">${pct}% of min</div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+/** ── Item history (last 10 transactions) ───────────────────────────────── */
+
+export async function openItemHistory(barcode, name) {
+  // Show modal with loading state first
+  document.querySelector('.modal-backdrop')?.remove();
+  const modal = document.createElement('div');
+  modal.className = 'modal-backdrop';
+  modal.setAttribute('role', 'dialog');
+  modal.setAttribute('aria-modal', 'true');
+  modal.innerHTML = `
+    <div class="modal-sheet">
+      <div class="modal-title">History: ${name}</div>
+      <div class="modal-sub" style="font-family:monospace;font-size:0.72rem;">${barcode}</div>
+      <div id="hist-loading" style="text-align:center;color:var(--muted);padding:20px;font-size:0.85rem;">Loading…</div>
+      <div id="hist-list"></div>
+      <button class="btn-secondary btn-sm" style="margin-top:12px;"
+        onclick="this.closest('.modal-backdrop').remove()">Close</button>
+    </div>`;
+  modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
+  document.body.appendChild(modal);
+
+  try {
+    await ensureToken();
+    const data = await sheetsRead(S.spreadsheetId, 'History!A:G');
+    const rows = (data.values || []).slice(1); // skip header
+
+    // Filter to this barcode's history, most recent first, max 10
+    const entries = rows
+      .filter(r => String(r[1]||'').trim() === barcode)
+      .reverse()
+      .slice(0, 10);
+
+    const loading = document.getElementById('hist-loading');
+    const list    = document.getElementById('hist-list');
+    if (loading) loading.style.display = 'none';
+
+    if (!entries.length) {
+      if (list) list.innerHTML = '<div style="text-align:center;color:var(--muted);padding:16px;font-size:0.85rem;">No history found for this item.</div>';
+      return;
+    }
+
+    if (list) list.innerHTML = entries.map(r => {
+      const ts     = String(r[0]||'—');
+      const change = String(r[3]||'0');
+      const newQty = String(r[4]||'—');
+      const isPos  = !change.startsWith('-');
+      return `<div class="hist-row">
+        <div>
+          <span class="hist-change ${isPos ? 'positive' : 'negative'}">${isPos ? '+' : ''}${change}</span>
+          <span style="color:var(--muted);font-size:0.78rem;margin-left:6px;">→ ${newQty} in stock</span>
+        </div>
+        <div class="hist-ts">${ts}</div>
+      </div>`;
+    }).join('');
+
+  } catch (e) {
+    const loading = document.getElementById('hist-loading');
+    if (loading) { loading.textContent = 'Could not load history: ' + e.message; }
+  }
 }

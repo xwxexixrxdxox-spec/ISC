@@ -406,3 +406,36 @@ details summary { cursor: pointer; font-size: 0.85rem; color: var(--muted); user
   z-index: 500; display: none;
   line-height: 1.5;
 }
+
+/* ─── Shopping list ──────────────────────────────────────────────────────────── */
+.shop-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--border);
+}
+.shop-item:last-child { border-bottom: none; }
+.shop-item-name  { font-size: 0.9rem; font-weight: 500; }
+.shop-item-bc    { font-size: 0.72rem; color: var(--muted); font-family: monospace; margin-top: 2px; }
+.shop-item-right { text-align: right; flex-shrink: 0; margin-left: 12px; }
+.shop-order-qty  { font-size: 1.1rem; font-weight: 700; color: var(--red); }
+.shop-order-lbl  { font-size: 0.68rem; color: var(--muted); }
+
+/* ─── Item history list ─────────────────────────────────────────────────────── */
+.hist-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 7px 0;
+  border-bottom: 1px solid var(--border);
+  font-size: 0.8rem;
+}
+.hist-row:last-child { border-bottom: none; }
+.hist-change { font-weight: 700; }
+.hist-change.positive { color: var(--accent); }
+.hist-change.negative { color: var(--red); }
+.hist-ts { font-size: 0.7rem; color: var(--muted); }
+
+/* ─── Scan FAB visible state ────────────────────────────────────────────────── */
+#pane-inv.active-pane #inv-scan-fab { display: flex !important; }
