@@ -439,3 +439,8 @@ details summary { cursor: pointer; font-size: 0.85rem; color: var(--muted); user
 
 /* ─── Scan FAB visible state ────────────────────────────────────────────────── */
 #pane-inv.active-pane #inv-scan-fab { display: flex !important; }
+
+/* Disable browser pull-to-refresh in installed PWA standalone mode */
+@media (display-mode: standalone) {
+  html { overscroll-behavior-y: contain; }
+}
