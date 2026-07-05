@@ -89,18 +89,6 @@ function init() {
   }
   show('screen-welcome');
 }
-  if (S.spreadsheetId) {
-    // Sheet is known -- go straight to the scanner.
-    // ensureToken() will silently get a token on the first scan/action.
-    // This means swipe-to-refresh never shows the welcome screen.
-    show('screen-main');
-    initMain();
-    // Warm up the token in the background so the first scan is instant
-    trySilentToken().catch(() => {});
-    return;
-  }
-  show('screen-welcome');
-}
 
 /* --- Welcome Screen -------------------------------------------------------- */
 // --- Join shared sheet --------------------------------------------------------
