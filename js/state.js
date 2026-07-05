@@ -7,6 +7,7 @@ export const CLIENT_ID =
   '1003127305142-ucdql7nnag18sfkca159qi4v2nbaqiio.apps.googleusercontent.com';
 
 export const S = {
+  userEmail:      localStorage.getItem('userEmail')     || '',
   sheetUrl:       localStorage.getItem('sheetUrl')      || '',
   spreadsheetId:  localStorage.getItem('spreadsheetId') || '',
   accessToken:    null,

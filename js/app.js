@@ -89,7 +89,7 @@ document.getElementById('joinSheetBtn')?.addEventListener('click', () => {
   const match = raw.match(/\/spreadsheets\/d\/([a-zA-Z0-9_-]+)/);
   const spreadsheetId = match ? match[1] : raw;
   if (!/^[a-zA-Z0-9_-]{20,}$/.test(spreadsheetId)) {
-    setStatus('joinStatus', 'That does not look like a valid spreadsheet URL or ID.', 'err');
+    setStatus('joinStatus', 'That doesn\'t look like a valid spreadsheet URL or ID.', 'err');
     return;
   }
   setStatus('joinStatus', 'Signing in to connect...', 'info');
@@ -99,13 +99,17 @@ document.getElementById('joinSheetBtn')?.addEventListener('click', () => {
   }
   const btn = document.getElementById('joinSheetBtn');
   if (btn) { btn.disabled = true; btn.textContent = 'Connecting...'; }
-  requestToken(() => {
+  requestToken(async () => {
     const sheetUrl = 'https://docs.google.com/spreadsheets/d/' + spreadsheetId;
     localStorage.setItem('sheetUrl', sheetUrl);
     localStorage.setItem('spreadsheetId', spreadsheetId);
     S.sheetUrl = sheetUrl;
     S.spreadsheetId = spreadsheetId;
-    setStatus('joinStatus', '(done) Connected! Loading...', 'ok');
+    // Fetch the user's own email so the access hint can show it specifically
+    await fetchUserEmail();
+    if (S.userEmail) localStorage.setItem('userEmail', S.userEmail);
+    sessionStorage.setItem('joined-sheet', '1');
+    setStatus('joinStatus', '(ok) Connected! Loading...', 'ok');
     setTimeout(() => { show('screen-main'); initMain(); }, 800);
   });
 });
@@ -126,6 +130,18 @@ document.getElementById('connectGoogleBtn')?.addEventListener('click', () => {
 });
 
 /* --- Main Screen ----------------------------------------------------------- */
+// Fetch the signed-in user's email after auth -- used in the shared sheet hint
+async function fetchUserEmail() {
+  if (S.userEmail) return S.userEmail;
+  try {
+    const res  = await fetch('https://www.googleapis.com/oauth2/v2/userinfo',
+      { headers: { 'Authorization': 'Bearer ' + S.accessToken } });
+    const data = await res.json();
+    if (data.email) { S.userEmail = data.email; }
+  } catch (e) { /* best effort */ }
+  return S.userEmail || '';
+}
+
 export function initMain() {
   [$('sheetLink'), $('sheetLinkFull')].forEach(el => {
     if (!el) return;
@@ -191,6 +207,46 @@ export function initMain() {
 
   const diag = document.getElementById('diag-panel');
   if (diag) diag.style.display = 'none';
+
+  // Show shared sheet access hint the first time a user joins someone else's sheet
+  if (sessionStorage.getItem('joined-sheet') === '1') {
+    sessionStorage.removeItem('joined-sheet');
+    showSharedSheetHint();
+  }
+}
+
+function showSharedSheetHint() {
+  // Remove any existing hint
+  document.getElementById('shared-sheet-hint')?.remove();
+
+  const email = S.userEmail || 'your Google account';
+  const hint  = document.createElement('div');
+  hint.id = 'shared-sheet-hint';
+  hint.style.cssText = [
+    'position:fixed;bottom:70px;left:12px;right:12px',
+    'background:#1e3a5f;border:1px solid #3b82f6',
+    'border-radius:10px;padding:14px;z-index:500',
+    'box-shadow:0 4px 20px rgba(0,0,0,0.5);line-height:1.5'
+  ].join(';');
+
+  hint.innerHTML = '<div style="color:#93c5fd;font-weight:700;font-size:0.85rem;margin-bottom:6px;">'
+    + 'Joined a shared sheet</div>'
+    + '<div style="color:#cbd5e1;font-size:0.8rem;">'
+    + 'To add or remove stock, the sheet owner must share it with '
+    + '<b style="color:#f1f5f9;">' + email + '</b> '
+    + 'and set your permission to <b style="color:#f1f5f9;">Editor</b>.<br><br>'
+    + 'In Google Sheets: Share button &rarr; add your email &rarr; choose Editor.'
+    + '</div>'
+    + '<div style="text-align:right;margin-top:10px;">'
+    + '<button onclick="document.getElementById('shared-sheet-hint').remove()" '
+    + 'style="background:#3b82f6;color:white;border:none;border-radius:6px;'
+    + 'padding:7px 14px;font-size:0.8rem;font-weight:700;cursor:pointer;">'
+    + 'Got it</button>'
+    + '</div>';
+
+  document.body.appendChild(hint);
+  // Auto-dismiss after 20 seconds
+  setTimeout(() => hint.remove(), 20000);
 }
 
 /** Share the current shopping list via Web Share API */
