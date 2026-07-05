@@ -12,6 +12,7 @@ import { $, setStatus } from './utils.js';
 let stream    = null;
 let scanning  = false;
 let detector  = null;
+let html5QrCode = null; // For html5-qrcode fallback
 let lastCode  = null;
 let codeCount = 0;
 let missCount = 0;
@@ -36,68 +37,124 @@ export function initScanner() {
 }
 
 async function startScan() {
-  if (!('BarcodeDetector' in window)) {
-    setStatus('cameraStatus', 'Live scanning requires Chrome on Android. You can type barcodes manually below.', 'warn');
-    return;
+  // Try to use BarcodeDetector (Chrome/Android) first
+  if ('BarcodeDetector' in window) {
+    try {
+      detector = new BarcodeDetector({ formats: ['ean_13','ean_8','upc_a','upc_e','code_128','qr_code'] });
+      stream   = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: 'environment', width: { ideal: 1280 }, height: { ideal: 720 } },
+      });
+      const video = document.getElementById('video');
+      video.srcObject = stream;
+      document.getElementById('video-wrap').style.display = 'block';
+      scanning = true;
+      lastCode = null; codeCount = 0; missCount = 0;
+      requestAnimationFrame(scanLoop);
+      return;
+    } catch (e) {
+      setStatus('cameraStatus', 'Camera failed: ' + e.message, 'err');
+      return;
+    }
   }
+  
+  // Fallback to html5-qrcode for iOS Safari and other browsers
   try {
-    detector = new BarcodeDetector({ formats: ['ean_13','ean_8','upc_a','upc_e','code_128','qr_code'] });
-    stream   = await navigator.mediaDevices.getUserMedia({
-      video: { facingMode: 'environment', width: { ideal: 1280 }, height: { ideal: 720 } },
-    });
-    const video = document.getElementById('video');
-    video.srcObject = stream;
-    document.getElementById('video-wrap').style.display = 'block';
+    const videoContainer = document.getElementById('video-wrap');
+    videoContainer.style.display = 'block';
     scanning = true;
     lastCode = null; codeCount = 0; missCount = 0;
-    requestAnimationFrame(scanLoop);
+    
+    // Create a unique container ID for html5-qrcode to avoid conflicts
+    const containerId = `html5-qrcode-${Date.now()}`;
+    const videoElement = document.getElementById('video');
+    
+    // Wrap the video element in a container for html5-qrcode
+    const wrapper = document.createElement('div');
+    wrapper.id = containerId;
+    wrapper.style.width = '100%';
+    wrapper.style.maxWidth = '400px';
+    wrapper.style.margin = '0 auto';
+    
+    // Replace the video element with the wrapper
+    videoElement.parentNode.replaceChild(wrapper, videoElement);
+    wrapper.appendChild(videoElement);
+    
+    html5QrCode = new Html5Qrcode(containerId);
+    const config = { fps: 10, qrbox: { width: 250, height: 250 } };
+    
+    await html5QrCode.start(
+      { facingMode: "environment" },
+      config,
+      (decodedText, decodedResult) => {
+        // Handle successful scan
+        if (decodedText && decodedText !== lastCode) {
+          lastCode = decodedText;
+          codeCount++;
+          
+          // Require multiple consecutive reads for confirmation
+          if (codeCount >= CONFIRM_READS) {
+            lastCode = null;
+            codeCount = 0;
+            stopScan();
+            document.getElementById('scanBtn').textContent = '[camera] Scan Barcode';
+            document.getElementById('barcode').value = decodedText;
+            setStatus('cameraStatus', `Scanned: ${decodedText} -- looking up...`, 'info');
+            lookupBarcode(decodedText);
+          } else {
+            setStatus('cameraStatus', `Hold steady... ${Math.round((codeCount / CONFIRM_READS) * 100)}%`, 'info');
+          }
+        }
+      },
+      (errorMessage) => {
+        // Handle scan error (continuously called, so we ignore minor errors)
+        // Only show persistent errors
+        if (errorMessage.includes("Cannot read properties") || errorMessage.includes("NotFoundError")) {
+          console.error('QR Code error:', errorMessage);
+        }
+      }
+    );
+    
+    setStatus('cameraStatus', 'Scanner initialized. Point camera at barcode.', 'info');
   } catch (e) {
-    setStatus('cameraStatus', 'Camera failed: ' + e.message, 'err');
+    setStatus('cameraStatus', 'Failed to initialize scanner: ' + e.message, 'err');
+    scanning = false;
+    // Restore video element if wrapper creation failed
+    const wrapper = document.querySelector('[id^="html5-qrcode-"]');
+    if (wrapper && wrapper.parentNode) {
+      const videoElement = wrapper.querySelector('video');
+      if (videoElement) {
+        wrapper.parentNode.replaceChild(videoElement, wrapper);
+      }
+    }
   }
 }
 
 function stopScan() {
   scanning = false;
-  if (stream) stream.getTracks().forEach(t => t.stop());
+  if (stream) {
+    stream.getTracks().forEach(t => t.stop());
+    stream = null;
+  }
+  if (html5QrCode) {
+    html5QrCode.stop().then(() => {
+      html5QrCode = null;
+      
+      // Restore original video element structure
+      const wrapper = document.querySelector('[id^="html5-qrcode-"]');
+      if (wrapper && wrapper.parentNode) {
+        const videoElement = wrapper.querySelector('video');
+        if (videoElement) {
+          const videoWrapper = document.getElementById('video-wrap');
+          videoWrapper.innerHTML = ''; // Clear wrapper
+          videoWrapper.appendChild(videoElement); // Put video back directly
+        }
+        wrapper.remove(); // Remove wrapper
+      }
+    }).catch(err => {
+      console.error('Error stopping html5-qrcode:', err);
+    });
+  }
   document.getElementById('video-wrap').style.display = 'none';
-}
-
-async function scanLoop() {
-  if (!scanning) return;
-  const video = document.getElementById('video');
-  try {
-    const codes = await detector.detect(video);
-    if (codes.length > 0) {
-      const code = codes[0].rawValue;
-      const fmt  = codes[0].format || '';
-
-      // Reject codes whose digit count doesn't match the declared format
-      const expectedLengths = { ean_13: 13, ean_8: 8, upc_a: 12, upc_e: 8 };
-      if (expectedLengths[fmt] && code.replace(/\D/g, '').length !== expectedLengths[fmt]) {
-        requestAnimationFrame(scanLoop); return;
-      }
-
-      missCount = 0;
-      if (code !== lastCode) { lastCode = code; codeCount = 1; hideVendorPanel(); }
-      else codeCount++;
-
-      setStatus('cameraStatus', `Hold steady... ${Math.round((codeCount / CONFIRM_READS) * 100)}%`, 'info');
-
-      if (codeCount >= CONFIRM_READS) {
-        lastCode = null; codeCount = 0; missCount = 0;
-        document.getElementById('barcode').value = code;
-        stopScan();
-        document.getElementById('scanBtn').textContent = '[camera] Scan Barcode';
-        setStatus('cameraStatus', `Scanned: ${code} (${fmt || 'barcode'}) -- looking up...`, 'info');
-        lookupBarcode(code);
-        return;
-      }
-    } else {
-      missCount++;
-      if (missCount > MISS_TOLERANCE) { lastCode = null; codeCount = 0; missCount = 0; }
-    }
-  } catch (e) { /* frame decode failed -- keep looping */ }
-  requestAnimationFrame(scanLoop);
 }
 
 export async function lookupBarcode(code) {
@@ -241,4 +298,43 @@ export function hideVendorPanel() {
   if (panel) panel.style.display = 'none';
   const list = document.getElementById('vendor-list');
   if (list) list.innerHTML = '';
+}
+
+// Keep the original scanLoop for BarcodeDetector path
+async function scanLoop() {
+  if (!scanning) return;
+  const video = document.getElementById('video');
+  try {
+    const codes = await detector.detect(video);
+    if (codes.length > 0) {
+      const code = codes[0].rawValue;
+      const fmt  = codes[0].format || '';
+
+      // Reject codes whose digit count doesn't match the declared format
+      const expectedLengths = { ean_13: 13, ean_8: 8, upc_a: 12, upc_e: 8 };
+      if (expectedLengths[fmt] && code.replace(/\D/g, '').length !== expectedLengths[fmt]) {
+        requestAnimationFrame(scanLoop); return;
+      }
+
+      missCount = 0;
+      if (code !== lastCode) { lastCode = code; codeCount = 1; hideVendorPanel(); }
+      else codeCount++;
+
+      setStatus('cameraStatus', `Hold steady... ${Math.round((codeCount / CONFIRM_READS) * 100)}%`, 'info');
+
+      if (codeCount >= CONFIRM_READS) {
+        lastCode = null; codeCount = 0; missCount = 0;
+        document.getElementById('barcode').value = code;
+        stopScan();
+        document.getElementById('scanBtn').textContent = '[camera] Scan Barcode';
+        setStatus('cameraStatus', `Scanned: ${code} (${fmt || 'barcode'}) -- looking up...`, 'info');
+        lookupBarcode(code);
+        return;
+      }
+    } else {
+      missCount++;
+      if (missCount > MISS_TOLERANCE) { lastCode = null; codeCount = 0; missCount = 0; }
+    }
+  } catch (e) { /* frame decode failed -- keep looping */ }
+  requestAnimationFrame(scanLoop);
 }
