@@ -1,5 +1,5 @@
 /**
- * service-worker.js -- isc-v9
+ * service-worker.js -- isc-v5
  *
  * Strategy:
  *   - JS / CSS / HTML: NETWORK ONLY with no-cache header (bypasses both SW
@@ -15,7 +15,7 @@
  * is enough -- no CACHE_NAME change needed unless the static assets change.
  */
 
-const CACHE    = 'isc-v9-static';
+const CACHE    = 'isc-v5-static';
 const STATIC   = [
   '/ISC/icons/icon-192.png',
   '/ISC/icons/icon-512.png',
@@ -39,7 +39,7 @@ function isExternal(url) {
          host.includes('accounts');
 }
 
-/* ── Install: only pre-cache the static assets ───────────────────────── */
+/* -- Install: only pre-cache the static assets ------------------------- */
 self.addEventListener('install', e => {
   e.waitUntil(
     caches.open(CACHE).then(c => c.addAll(STATIC))
@@ -47,7 +47,7 @@ self.addEventListener('install', e => {
   self.skipWaiting();
 });
 
-/* ── Activate: clear any old caches and take over immediately ─────────── */
+/* -- Activate: clear any old caches and take over immediately ----------- */
 self.addEventListener('activate', e => {
   e.waitUntil(
     caches.keys().then(keys =>
@@ -61,7 +61,7 @@ self.addEventListener('activate', e => {
   self.clients.claim();
 });
 
-/* ── Fetch: different strategy per resource type ─────────────────────── */
+/* -- Fetch: different strategy per resource type ----------------------- */
 self.addEventListener('fetch', e => {
   const { request } = e;
 
@@ -109,7 +109,7 @@ self.addEventListener('fetch', e => {
   );
 });
 
-/* ── Message handler: force update on demand ─────────────────────────── */
+/* -- Message handler: force update on demand --------------------------- */
 self.addEventListener('message', e => {
   if (e.data === 'SKIP_WAITING') self.skipWaiting();
 });
