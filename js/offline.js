@@ -109,5 +109,18 @@ export async function writeToSheet(payload, allowQueue = true) {
     console.warn('[Audit] History write skipped:', e.message);
   }
 
+  // Update the in-memory cache so the just-written item appears at the
+  // top of the inventory tab immediately without a full sheet reload.
+  // Trims to 10 so memory stays bounded regardless of sheet size.
+  const existing = S.inventoryCache.findIndex(r => String(r[0]||'').trim() === barcode);
+  const updatedRow = [barcode, description, newQty, unit,
+    price !== '' ? parseFloat(price) : (existing >= 0 ? S.inventoryCache[existing][4] : ''),
+    timestamp,
+    S.inventoryCache[existing]?.[6] ?? '',
+    S.inventoryCache[existing]?.[7] ?? ''];
+  if (existing >= 0) S.inventoryCache.splice(existing, 1);
+  S.inventoryCache.unshift(updatedRow);      // most recent at index 0
+  if (S.inventoryCache.length > 10) S.inventoryCache.length = 10;
+
   return { newQty };
 }

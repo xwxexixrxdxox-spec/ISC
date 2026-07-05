@@ -20,11 +20,10 @@ export async function loadInventoryView() {
   try {
     await ensureToken();
     const data = await sheetsRead(S.spreadsheetId, 'Inventory!A:H');
-    const rows = (data.values || []).slice(1);
-    S.inventoryCache = rows;
+    const allRows = (data.values || []).slice(1).filter(r => String(r[0]||'').trim());
 
-    // Sync min/max thresholds from sheet columns G and H
-    rows.forEach(r => {
+    // Sync min/max thresholds from ALL sheet rows before trimming
+    allRows.forEach(r => {
       const barcode  = String(r[0] || '').trim();
       if (!barcode) return;
       const sheetMin = parseInt(r[6]) || 0;
@@ -33,8 +32,25 @@ export async function loadInventoryView() {
     });
     localStorage.setItem('minQty', JSON.stringify(S.minQty));
 
-    renderInventoryList(rows, $('inv-search')?.value.trim().toLowerCase() || '');
+    // Sort by Last Updated (col F, index 5) descending -- most recent first.
+    // Keep only the 10 most recently updated items in memory.
+    // Full inventory remains in Google Sheets.
+    allRows.sort((a, b) => {
+      const ta = new Date(String(a[5]||0)).getTime() || 0;
+      const tb = new Date(String(b[5]||0)).getTime() || 0;
+      return tb - ta;
+    });
+    const CACHE_LIMIT = 10;
+    S.inventoryCache = allRows.slice(0, CACHE_LIMIT);
+
+    renderInventoryList(S.inventoryCache, $('inv-search')?.value.trim().toLowerCase() || '');
     updateLowStockBadge();
+
+    // Show a note so users know this is a recent-items view
+    const countEl = $('inv-count');
+    if (countEl && allRows.length > CACHE_LIMIT) {
+      countEl.textContent = 'Showing 10 most recently updated of ' + allRows.length + ' items -- full list in Google Sheets';
+    }
   } catch (e) {
     if (e.message === 'TOKEN_EXPIRED') { await ensureToken(); loadInventoryView(); }
     else if (list) list.innerHTML = '<div class="inv-empty">Could not load: ' + e.message + '</div>';
