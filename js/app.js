@@ -18,7 +18,7 @@
 
 import { S, CLIENT_ID, getThreshold } from './state.js';
 import { $, setStatus }               from './utils.js';
-import { ensureToken, requestToken, scheduleTokenRefresh, trySilentToken } from './auth.js';
+import { ensureToken, requestToken, scheduleTokenRefresh } from './auth.js';
 import { runFullSetup }               from './setup.js';
 import { writeToSheet, flushOfflineQueue, updateOfflineBar, queueWrite } from './offline.js';
 import { initScanner, selectVendorPrice } from './scanner.js';
@@ -188,15 +188,18 @@ function showSheetMissingBanner() {
     + 'is no longer accessible. This can happen when the installed app has '
     + 'different stored data from the browser.<br>'
     + '<div style="margin-top:8px;display:flex;gap:8px;">'
-    + '<button onclick="document.getElementById('freshBtn').click()" '
-    + 'style="background:#dc2626;color:white;border:none;border-radius:5px;'
-    + 'padding:6px 10px;font-size:0.8rem;font-weight:700;cursor:pointer;">'
-    + 'Start Fresh</button>'
-    + '<button onclick="document.getElementById('sheet-missing-banner').remove()" '
-    + 'style="background:none;border:1px solid #f87171;color:#fca5a5;border-radius:5px;'
-    + 'padding:6px 10px;font-size:0.8rem;cursor:pointer;">Dismiss</button>'
+    + '<button id="smb-fresh" style="background:#dc2626;color:white;border:none;'
+    + 'border-radius:5px;padding:6px 10px;font-size:0.8rem;font-weight:700;cursor:pointer;">Start Fresh</button>'
+    + '<button id="smb-dismiss" style="background:none;border:1px solid #f87171;'
+    + 'color:#fca5a5;border-radius:5px;padding:6px 10px;font-size:0.8rem;cursor:pointer;">Dismiss</button>'
     + '</div>';
   document.body.appendChild(banner);
+  // Wire buttons with event listeners -- avoids nested quotes in onclick attributes
+  document.getElementById('smb-fresh')?.addEventListener('click', () => {
+    banner.remove();
+    document.getElementById('freshBtn')?.click();
+  });
+  document.getElementById('smb-dismiss')?.addEventListener('click', () => banner.remove());
 }
 
 export function initMain() {
