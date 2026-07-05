@@ -133,6 +133,21 @@ export function initMain() {
     el.addEventListener('click', e => { e.preventDefault(); if (S.sheetUrl) window.open(S.sheetUrl, '_blank', 'noopener'); });
   });
 
+  document.getElementById('signOutBtn')?.addEventListener('click', () => {
+    if (confirm('Sign out?\n\nYour sheet stays connected -- signing back in will reconnect to it automatically.')) {
+      // Revoke the OAuth token with Google so permissions are fully cleared
+      if (S.accessToken && window.google?.accounts?.oauth2) {
+        google.accounts.oauth2.revoke(S.accessToken, () => {
+          console.log('[Auth] Token revoked');
+        });
+      }
+      S.accessToken = null;
+      if (S.tokenTimer) { clearTimeout(S.tokenTimer); S.tokenTimer = null; }
+      // Keep sheetUrl + spreadsheetId so sign-in reconnects to same sheet
+      show('screen-welcome');
+    }
+  });
+
   document.getElementById('resetBtn')?.addEventListener('click', () => {
     if (confirm('Re-authenticate with Google?\n\nKeeps your existing sheet -- just refreshes sign-in.')) {
       S.accessToken = null;
