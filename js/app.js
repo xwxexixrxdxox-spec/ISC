@@ -71,23 +71,32 @@ function switchTab(tab) {
 }
 
 /* --- Init ------------------------------------------------------------------ */
-async function init() {
+function init() {
   if (S.sheetUrl && !S.spreadsheetId) {
     const m = S.sheetUrl.match(/\/spreadsheets\/d\/([a-zA-Z0-9_-]+)/);
     if (m) { S.spreadsheetId = m[1]; localStorage.setItem('spreadsheetId', m[1]); }
   }
   if (S.spreadsheetId) {
-    // Returning user -- try to get a token silently before showing anything.
-    // If it works, go straight to the scanner. No welcome screen, no button tap.
-    const silent = await trySilentToken();
-    if (silent) {
-      show('screen-main');
-      initMain();
-      return;
-    }
-    // Silent auth failed (session truly expired or revoked) -- show welcome
-    // screen so the user can tap Sign In. Their sheet is still remembered.
-    show('screen-welcome');
+    // Go straight to the scanner -- never show the welcome screen on reload.
+    // Token is fetched silently on first action via ensureToken().
+    // trySilentToken() is NOT called here because with prompt:'' GIS can
+    // still show an account selection popup on some Android versions.
+    // Instead, ensureToken() in submitChange/loadInventoryView handles it
+    // lazily and silently when the user first interacts.
+    show('screen-main');
+    initMain();
+    return;
+  }
+  show('screen-welcome');
+}
+  if (S.spreadsheetId) {
+    // Sheet is known -- go straight to the scanner.
+    // ensureToken() will silently get a token on the first scan/action.
+    // This means swipe-to-refresh never shows the welcome screen.
+    show('screen-main');
+    initMain();
+    // Warm up the token in the background so the first scan is instant
+    trySilentToken().catch(() => {});
     return;
   }
   show('screen-welcome');
@@ -155,6 +164,53 @@ async function fetchUserEmail() {
   return S.userEmail || '';
 }
 
+/** Verify the stored sheet still exists and is accessible.
+ * If it returns 404 or 403 the user is guided to reconnect.
+ * This catches two scenarios:
+ *   1. The sheet was deleted after the app last ran.
+ *   2. The installed PWA has stale sheet data from a previous session
+ *      (PWAs on Android Chrome 96+ have storage isolated from the browser).
+ */
+async function checkSheetAccessible() {
+  if (!S.spreadsheetId || !navigator.onLine) return;
+  try {
+    await ensureToken();
+    if (!S.accessToken) return; // no token yet -- skip check
+    const res = await fetch(
+      'https://sheets.googleapis.com/v4/spreadsheets/' + S.spreadsheetId
+      + '?fields=spreadsheetId',
+      { headers: { 'Authorization': 'Bearer ' + S.accessToken } }
+    );
+    if (res.status === 404 || res.status === 403) {
+      showSheetMissingBanner();
+    }
+  } catch (e) { /* offline or transient -- ignore */ }
+}
+
+function showSheetMissingBanner() {
+  if (document.getElementById('sheet-missing-banner')) return;
+  const banner = document.createElement('div');
+  banner.id = 'sheet-missing-banner';
+  banner.style.cssText = [
+    'position:fixed;top:0;left:0;right:0;z-index:600',
+    'background:#7f1d1d;color:#fecaca;padding:12px 14px',
+    'font-size:0.82rem;line-height:1.5'
+  ].join(';');
+  banner.innerHTML = '<b>Sheet not found.</b> The stored sheet was deleted or '
+    + 'is no longer accessible. This can happen when the installed app has '
+    + 'different stored data from the browser.<br>'
+    + '<div style="margin-top:8px;display:flex;gap:8px;">'
+    + '<button onclick="document.getElementById('freshBtn').click()" '
+    + 'style="background:#dc2626;color:white;border:none;border-radius:5px;'
+    + 'padding:6px 10px;font-size:0.8rem;font-weight:700;cursor:pointer;">'
+    + 'Start Fresh</button>'
+    + '<button onclick="document.getElementById('sheet-missing-banner').remove()" '
+    + 'style="background:none;border:1px solid #f87171;color:#fca5a5;border-radius:5px;'
+    + 'padding:6px 10px;font-size:0.8rem;cursor:pointer;">Dismiss</button>'
+    + '</div>';
+  document.body.appendChild(banner);
+}
+
 export function initMain() {
   [$('sheetLink'), $('sheetLinkFull')].forEach(el => {
     if (!el) return;
@@ -204,6 +260,11 @@ export function initMain() {
 
   // Share shopping list button
   document.getElementById('share-list-btn')?.addEventListener('click', shareShoppingList);
+
+  // Check the stored sheet is still accessible -- catches the case where
+  // the PWA has an old/deleted sheet stored in its separate storage partition.
+  // Runs after a short delay so it doesn't block the UI from rendering first.
+  setTimeout(checkSheetAccessible, 2000);
 
   updateOfflineBar();
   updateLowStockBadge();

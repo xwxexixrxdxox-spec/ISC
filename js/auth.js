@@ -111,11 +111,17 @@ export function ensureToken() {
 export function trySilentToken() {
   return new Promise(resolve => {
     if (!window.google?.accounts?.oauth2) { resolve(false); return; }
+
+    // Safety timeout -- if GIS takes more than 4 seconds to respond
+    // silently, give up and show the welcome screen rather than hanging.
+    const timeout = setTimeout(() => resolve(false), 4000);
+
     try {
       const client = google.accounts.oauth2.initTokenClient({
         client_id: CLIENT_ID,
         scope: SCOPES,
         callback: resp => {
+          clearTimeout(timeout);
           if (!resp.error && resp.access_token) {
             S.accessToken = resp.access_token;
             scheduleTokenRefresh();
@@ -124,13 +130,14 @@ export function trySilentToken() {
             resolve(false);
           }
         },
-        error_callback: () => resolve(false),
+        error_callback: () => { clearTimeout(timeout); resolve(false); },
       });
-      // Empty prompt = silent: no UI shown at all.
-      // If the user has not yet authorized, this fails silently and
-      // resolve(false) causes the app to show the welcome screen normally.
+      // Empty prompt = truly silent. If the user has not authorized or
+      // their Google session has expired, this fails silently (no popup)
+      // and the app shows the welcome screen with the Sign In button.
       client.requestAccessToken({ prompt: '' });
     } catch (e) {
+      clearTimeout(timeout);
       resolve(false);
     }
   });
