@@ -170,7 +170,15 @@ export function initMain() {
   initScanner();
   initInventory();
 
-  /** Share the current shopping list via Web Share API */
+  // Cross-module events (replaces circular imports)
+  window.addEventListener('show-undo', e => showUndoToast(e.detail.payload, e.detail.newQty));
+  window.addEventListener('update-badge', () => updateLowStockBadge());
+
+  const diag = document.getElementById('diag-panel');
+  if (diag) diag.style.display = 'none';
+}
+
+/** Share the current shopping list via Web Share API */
 async function shareShoppingList() {
   const items = S.inventoryCache.filter(r => {
     const { min } = getThreshold(String(r[0]||''));
@@ -181,24 +189,14 @@ async function shareShoppingList() {
     const { min, max } = getThreshold(String(r[0]||''));
     const qty     = Number(r[2]) || 0;
     const reorder = max > 0 ? (max - qty) : (min - qty + min);
-    return `• ${r[1]||r[0]} — order ${reorder > 0 ? reorder : min} ${r[3]||''}`.trim();
+    return ('• ' + (r[1]||r[0]) + ' — order ' + (reorder > 0 ? reorder : min) + ' ' + (r[3]||'')).trim();
   });
-  const text = 'Reorder list:
-' + lines.join('
-');
+  const text = 'Reorder list:\n' + lines.join('\n');
   if (navigator.share) {
     navigator.share({ title: 'Inventory Reorder List', text }).catch(() => {});
   } else {
     navigator.clipboard?.writeText(text).then(() => alert('List copied to clipboard!'));
   }
-}
-
-// Cross-module events (replaces circular imports)
-  window.addEventListener('show-undo', e => showUndoToast(e.detail.payload, e.detail.newQty));
-  window.addEventListener('update-badge', () => updateLowStockBadge());
-
-  const diag = document.getElementById('diag-panel');
-  if (diag) diag.style.display = 'none';
 }
 
 /* ─── Submit Handler ──────────────────────────────────────────────────────── */
