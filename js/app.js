@@ -607,48 +607,49 @@ $('addBtn').addEventListener('click', () => submitChange('add'));
 $('subBtn').addEventListener('click', () => submitChange('subtract'));
 
 /* ─── Main Screen Init ──────────────────────────────────────────────────── */
-// ─── Smart Sheet Opener ─────────────────────────────────────────────────────
-// On Android: tries intent:// URL which opens the Sheets app directly if
-// installed, and falls back to the browser URL if not.
-// On iOS: uses the regular URL — universal links open Sheets app automatically.
-// Desktop: opens a new browser tab.
-function openSheet(e) {
-  e.preventDefault();
-  const url = S.sheetUrl;
-  if (!url) return;
-
+// ─── Smart Sheet Links ──────────────────────────────────────────────────────
+// Sets the href of sheet link anchors directly — no click interception.
+// On Android: href is an intent:// URL. Chrome passes it to the OS intent
+//   system natively when the user taps, which opens the Sheets app if installed
+//   and falls back to the browser URL if not.
+// On iOS: href is the https:// URL — iOS App Links route it to Sheets app.
+// Desktop: href is the https:// URL, opens in a new tab.
+//
+// Using window.location.href = intent in a JS handler was blocked by Chrome's
+// navigation security policy. Setting href on the element itself works because
+// it goes through the browser's normal link-tap flow.
+function buildSheetHref() {
   const ua = navigator.userAgent || '';
   const isAndroid = /android/i.test(ua);
 
-  if (isAndroid && S.spreadsheetId) {
-    // Android intent:// URL — host must be in the path (not as a parameter)
-    // so Android knows which App Link handler to invoke.
-    // scheme=https tells Android this resolves to an https URL.
-    // package= targets Google Sheets specifically.
-    // S.browser_fallback_url= is the graceful fallback if Sheets isn't installed.
-    const fallback = encodeURIComponent(url);
-    const intent =
+  if (isAndroid && S.spreadsheetId && S.sheetUrl) {
+    const fallback = encodeURIComponent(S.sheetUrl);
+    return (
       'intent://docs.google.com/spreadsheets/d/' + S.spreadsheetId +
       '#Intent' +
       ';scheme=https' +
       ';package=com.google.android.apps.sheets' +
       ';S.browser_fallback_url=' + fallback +
-      ';end';
-    window.location.href = intent;
-    return;
+      ';end'
+    );
   }
-
-  // iOS: universal links route docs.google.com URLs to Sheets app automatically.
-  // Desktop: opens a new tab.
-  window.open(url, '_blank', 'noopener');
+  return S.sheetUrl || '#';
 }
 
 function initMain() {
-  // Make sheet links use the smart opener instead of plain href
+  const href = buildSheetHref();
+  const isAndroid = /android/i.test(navigator.userAgent || '');
+
   [$('sheetLink'), $('sheetLinkFull')].forEach(el => {
     if (!el) return;
-    el.href = S.sheetUrl || '#';
-    el.addEventListener('click', openSheet);
+    el.href = href;
+    // Intent URLs must stay in the same tab (_self) — _blank breaks intent routing
+    if (isAndroid) {
+      el.removeAttribute('target');
+    } else {
+      el.setAttribute('target', '_blank');
+      el.setAttribute('rel', 'noopener');
+    }
   });
 
   $('resetBtn').addEventListener('click', () => {
