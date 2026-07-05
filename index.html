@@ -245,7 +245,37 @@
   <button onclick="location.reload()" style="margin-left:10px;background:white;color:var(--red);border:none;border-radius:4px;padding:3px 8px;font-weight:700;cursor:pointer;width:auto;margin-top:0;">Reload</button>
 </div>
 
-<!-- ES module entry point — imports all other modules -->
-<script type="module" src="./js/app.js"></script>
+<!-- Inline SW killer — runs before modules load so stale service workers
+     can't intercept and serve old non-module JS files. Does not depend on
+     app.js loading successfully. -->
+<script>
+(function() {
+  if (!('serviceWorker' in navigator)) return;
+  var CURRENT = 'isc-v5';
+  if (sessionStorage.getItem('sw-inline-ok') === CURRENT) return;
+  sessionStorage.setItem('sw-inline-ok', CURRENT);
+  navigator.serviceWorker.getRegistrations().then(function(regs) {
+    var stale = regs.filter(function(r) {
+      var sw = r.active || r.installing || r.waiting;
+      return sw && !sw.scriptURL.includes(CURRENT);
+    });
+    if (stale.length > 0) {
+      console.log('[SW] Evicting ' + stale.length + ' stale worker(s) — reloading');
+      Promise.all(stale.map(function(r) { return r.unregister(); }))
+        .then(function() { location.reload(true); });
+    }
+  });
+})();
+</script>
+
+<!-- ES module entry point -->
+<script type="module" src="./js/app.js" onerror="
+  document.getElementById('diag-js').innerHTML =
+    'JS: <span style=\'color:#ef4444;\'>✗ Module load failed — check browser console (F12)</span>';
+  document.getElementById('diag-panel').style.display = 'block';
+  document.getElementById('diag-panel').style.background = 'rgba(239,68,68,0.1)';
+  document.getElementById('diag-panel').style.padding = '12px';
+  document.getElementById('diag-panel').style.borderRadius = '8px';
+"></script>
 </body>
 </html>
