@@ -18,7 +18,7 @@
 
 import { S, CLIENT_ID, getThreshold } from './state.js';
 import { $, setStatus }               from './utils.js';
-import { ensureToken, requestToken, scheduleTokenRefresh } from './auth.js';
+import { ensureToken, requestToken, scheduleTokenRefresh, trySilentToken } from './auth.js';
 import { runFullSetup }               from './setup.js';
 import { writeToSheet, flushOfflineQueue, updateOfflineBar, queueWrite } from './offline.js';
 import { initScanner, selectVendorPrice } from './scanner.js';
@@ -71,12 +71,25 @@ function switchTab(tab) {
 }
 
 /* --- Init ------------------------------------------------------------------ */
-function init() {
+async function init() {
   if (S.sheetUrl && !S.spreadsheetId) {
     const m = S.sheetUrl.match(/\/spreadsheets\/d\/([a-zA-Z0-9_-]+)/);
     if (m) { S.spreadsheetId = m[1]; localStorage.setItem('spreadsheetId', m[1]); }
   }
-  if (S.spreadsheetId) { show('screen-main'); initMain(); return; }
+  if (S.spreadsheetId) {
+    // Returning user -- try to get a token silently before showing anything.
+    // If it works, go straight to the scanner. No welcome screen, no button tap.
+    const silent = await trySilentToken();
+    if (silent) {
+      show('screen-main');
+      initMain();
+      return;
+    }
+    // Silent auth failed (session truly expired or revoked) -- show welcome
+    // screen so the user can tap Sign In. Their sheet is still remembered.
+    show('screen-welcome');
+    return;
+  }
   show('screen-welcome');
 }
 
