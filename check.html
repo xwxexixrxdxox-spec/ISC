@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html>
+<head><title>Module Check</title>
+<style>body{font-family:monospace;padding:20px;background:#0f172a;color:#f1f5f9;}
+.ok{color:#22c55e;}.err{color:#ef4444;}.wait{color:#f59e0b;}</style>
+</head>
+<body>
+<h2>Module Load Check</h2>
+<div id="out"></div>
+<script>
+const modules = [
+  'js/state.js','js/utils.js','js/api.js','js/auth.js',
+  'js/setup.js','js/offline.js','js/scanner.js',
+  'js/inventory.js','js/undo.js','js/pwa.js','js/app.js'
+];
+const out = document.getElementById('out');
+modules.forEach(m => {
+  const el = document.createElement('div');
+  el.innerHTML = '<span class="wait">⏳</span> ' + m;
+  out.appendChild(el);
+  fetch(m)
+    .then(r => {
+      if (r.ok) {
+        el.innerHTML = '<span class="ok">✅ ' + r.status + '</span> ' + m + ' (' + r.headers.get('content-type') + ')';
+      } else {
+        el.innerHTML = '<span class="err">❌ ' + r.status + '</span> ' + m + ' — FILE MISSING';
+      }
+    })
+    .catch(e => {
+      el.innerHTML = '<span class="err">❌ ERROR</span> ' + m + ': ' + e.message;
+    });
+});
+</script>
+</body>
+</html>
