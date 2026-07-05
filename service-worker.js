@@ -1,5 +1,5 @@
 /**
- * service-worker.js -- isc-v5
+ * service-worker.js -- isc-v6
  *
  * Strategy:
  *   - JS / CSS / HTML: NETWORK ONLY with no-cache header (bypasses both SW
@@ -15,7 +15,7 @@
  * is enough -- no CACHE_NAME change needed unless the static assets change.
  */
 
-const CACHE    = 'isc-v5-static';
+const CACHE    = 'isc-v6-static';
 const STATIC   = [
   '/ISC/icons/icon-192.png',
   '/ISC/icons/icon-512.png',
