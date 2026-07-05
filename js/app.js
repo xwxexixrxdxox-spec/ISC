@@ -607,49 +607,49 @@ $('addBtn').addEventListener('click', () => submitChange('add'));
 $('subBtn').addEventListener('click', () => submitChange('subtract'));
 
 /* ─── Main Screen Init ──────────────────────────────────────────────────── */
-// ─── Smart Sheet Links ──────────────────────────────────────────────────────
-// Sets the href of sheet link anchors directly — no click interception.
-// On Android: href is an intent:// URL. Chrome passes it to the OS intent
-//   system natively when the user taps, which opens the Sheets app if installed
-//   and falls back to the browser URL if not.
-// On iOS: href is the https:// URL — iOS App Links route it to Sheets app.
-// Desktop: href is the https:// URL, opens in a new tab.
-//
-// Using window.location.href = intent in a JS handler was blocked by Chrome's
-// navigation security policy. Setting href on the element itself works because
-// it goes through the browser's normal link-tap flow.
-function buildSheetHref() {
-  const ua = navigator.userAgent || '';
-  const isAndroid = /android/i.test(ua);
+// ─── Smart Sheet Opener ─────────────────────────────────────────────────────
+// Android: Chrome intercepts intent:// URLs for Google-owned domains (including
+//   docs.google.com) before they reach the OS intent system — so intent URLs
+//   never actually open the Sheets app. The reliable workaround is the Web
+//   Share API: navigator.share() bypasses Chrome and triggers the native Android
+//   share sheet, where the user can pick Google Sheets directly.
+// iOS: universal links route docs.google.com to the Sheets app automatically.
+// Desktop: opens a new browser tab.
+function openSheet(e) {
+  e.preventDefault();
+  if (!S.sheetUrl) return;
 
-  if (isAndroid && S.spreadsheetId && S.sheetUrl) {
-    const fallback = encodeURIComponent(S.sheetUrl);
-    return (
-      'intent://docs.google.com/spreadsheets/d/' + S.spreadsheetId +
-      '#Intent' +
-      ';scheme=https' +
-      ';package=com.google.android.apps.sheets' +
-      ';S.browser_fallback_url=' + fallback +
-      ';end'
-    );
+  const isAndroid = /android/i.test(navigator.userAgent || '');
+
+  if (isAndroid) {
+    if (navigator.share) {
+      // Web Share API → native Android share sheet → user picks Sheets app.
+      // Works on all Android versions, no Chrome domain restrictions.
+      navigator.share({
+        title: 'Inventory Sheet',
+        url: S.sheetUrl
+      }).catch(err => {
+        // User dismissed the share sheet or share failed — open in new tab
+        if (err.name !== 'AbortError') {
+          window.open(S.sheetUrl, '_blank', 'noopener');
+        }
+      });
+      return;
+    }
+    // Web Share not available (older Android) — open in new tab
+    window.open(S.sheetUrl, '_blank', 'noopener');
+    return;
   }
-  return S.sheetUrl || '#';
+
+  // iOS universal links + Desktop
+  window.open(S.sheetUrl, '_blank', 'noopener');
 }
 
 function initMain() {
-  const href = buildSheetHref();
-  const isAndroid = /android/i.test(navigator.userAgent || '');
-
   [$('sheetLink'), $('sheetLinkFull')].forEach(el => {
     if (!el) return;
-    el.href = href;
-    // Intent URLs must stay in the same tab (_self) — _blank breaks intent routing
-    if (isAndroid) {
-      el.removeAttribute('target');
-    } else {
-      el.setAttribute('target', '_blank');
-      el.setAttribute('rel', 'noopener');
-    }
+    el.href = S.sheetUrl || '#';
+    el.addEventListener('click', openSheet);
   });
 
   $('resetBtn').addEventListener('click', () => {
