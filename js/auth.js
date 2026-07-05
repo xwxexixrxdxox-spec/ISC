@@ -32,7 +32,7 @@ export function requestToken(callback) {
         callback();
       },
     });
-    client.requestAccessToken({ prompt: 'consent' });
+    client.requestAccessToken({ prompt: 'select_account' });
   } catch (e) {
     setStatus('connectStatus', 'Could not open sign-in: ' + e.message, 'err');
     resetSignInBtn();
@@ -98,6 +98,40 @@ export function ensureToken() {
     } catch (e) {
       console.warn('[Auth] ensureToken failed:', e.message);
       resolve();
+    }
+  });
+}
+
+/**
+ * Attempt a completely silent token acquisition.
+ * Succeeds if the user has already authorized this app's scopes.
+ * Returns true on success, false if interaction is needed.
+ * Called on app load so returning users skip the welcome screen.
+ */
+export function trySilentToken() {
+  return new Promise(resolve => {
+    if (!window.google?.accounts?.oauth2) { resolve(false); return; }
+    try {
+      const client = google.accounts.oauth2.initTokenClient({
+        client_id: CLIENT_ID,
+        scope: SCOPES,
+        callback: resp => {
+          if (!resp.error && resp.access_token) {
+            S.accessToken = resp.access_token;
+            scheduleTokenRefresh();
+            resolve(true);
+          } else {
+            resolve(false);
+          }
+        },
+        error_callback: () => resolve(false),
+      });
+      // Empty prompt = silent: no UI shown at all.
+      // If the user has not yet authorized, this fails silently and
+      // resolve(false) causes the app to show the welcome screen normally.
+      client.requestAccessToken({ prompt: '' });
+    } catch (e) {
+      resolve(false);
     }
   });
 }
