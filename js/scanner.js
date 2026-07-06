@@ -114,9 +114,11 @@ async function nativeScanLoop() {
 async function startZXingScanner() {
   setStatus('cameraStatus', 'Loading scanner for your browser...', 'info');
   try {
-    // Load only when needed -- cached in zxingModule after first use
+    // @zxing/browser@0.1.4 -- well-tested version, handles image processing internally.
+    // We use decodeFromCanvas (single-frame, no video element conflicts) inside
+    // our own requestAnimationFrame loop (no decodeFromStream iOS conflicts).
     if (!zxingModule) {
-      zxingModule = await import('https://esm.sh/@zxing/library@0.20.0');
+      zxingModule = await import('https://esm.sh/@zxing/browser@0.1.4');
     }
 
     const s = await navigator.mediaDevices.getUserMedia({
@@ -130,34 +132,30 @@ async function startZXingScanner() {
     stream = s;
     setupVideo(stream); // handles srcObject, play(), and status message
 
-    // Build ZXing decoder and a reusable offscreen canvas
-    const zxReader  = new zxingModule.MultiFormatReader();
+    const reader    = new zxingModule.BrowserMultiFormatReader();
     const offscreen = document.createElement('canvas');
 
-    // Frame loop -- identical architecture to the native BarcodeDetector loop
+    // Frame loop using decodeFromCanvas -- single frame decode, no video conflicts.
+    // Skips frames where the video isn't ready yet (common on iOS after play()).
     function zxingLoop() {
       if (!scanning) return;
       const video = document.getElementById('video');
-      // Wait until video dimensions are available (iOS needs a moment after play())
       if (!video || !video.videoWidth || !video.videoHeight) {
         requestAnimationFrame(zxingLoop); return;
       }
       try {
         offscreen.width  = video.videoWidth;
         offscreen.height = video.videoHeight;
-        const ctx = offscreen.getContext('2d', { willReadFrequently: true });
-        ctx.drawImage(video, 0, 0);
-        const img = ctx.getImageData(0, 0, offscreen.width, offscreen.height);
-        const lum = new zxingModule.RGBLuminanceSource(img.data, offscreen.width, offscreen.height);
-        const bmp = new zxingModule.BinaryBitmap(new zxingModule.HybridBinarizer(lum));
-        handleFrame(zxReader.decode(bmp).getText());
+        offscreen.getContext('2d', { willReadFrequently: true }).drawImage(video, 0, 0);
+        const result = reader.decodeFromCanvas(offscreen);
+        handleFrame(result.getText());
       } catch (e) {
-        handleMiss(); // NotFoundException = no barcode this frame, normal
+        // NotFoundException on every frame with no barcode -- expected and normal
+        handleMiss();
       }
       if (scanning) requestAnimationFrame(zxingLoop);
     }
 
-    // zxingControls.stop() is called by stopScan() -- loop exits via scanning=false
     zxingControls = { stop: () => {} };
     requestAnimationFrame(zxingLoop);
 
