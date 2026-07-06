@@ -31,6 +31,9 @@ export function initScanner() {
       stopScan();
       document.getElementById('scanBtn').textContent = 'Scan Barcode';
     } else {
+      // Set scanning=true immediately so a rapid double-tap cannot launch
+      // two concurrent scan sessions before getUserMedia resolves.
+      scanning = true;
       startScan();
       document.getElementById('scanBtn').textContent = 'Stop Scanning';
     }
@@ -64,9 +67,15 @@ async function startNativeScanner() {
     detector = new BarcodeDetector({
       formats: ['ean_13','ean_8','upc_a','upc_e','code_128','qr_code']
     });
-    stream = await navigator.mediaDevices.getUserMedia({
+    const s = await navigator.mediaDevices.getUserMedia({
       video: { facingMode: 'environment', width: { ideal: 1280 }, height: { ideal: 720 } }
     });
+    // Guard: user may have tapped Stop while getUserMedia was awaiting
+    if (!scanning && stream === null) {
+      s.getTracks().forEach(t => t.stop());
+      resetScanBtn(); return;
+    }
+    stream = s;
     setupVideo(stream);
     requestAnimationFrame(nativeScanLoop);
   } catch (e) {
@@ -105,9 +114,15 @@ async function startZXingScanner() {
     const { BrowserMultiFormatReader, NotFoundException } =
       await import('https://esm.sh/@zxing/browser@0.1.5');
 
-    stream = await navigator.mediaDevices.getUserMedia({
+    const s = await navigator.mediaDevices.getUserMedia({
       video: { facingMode: 'environment', width: { ideal: 1280 }, height: { ideal: 720 } }
     });
+    // Guard: user may have tapped Stop while getUserMedia was awaiting
+    if (!scanning && stream === null) {
+      s.getTracks().forEach(t => t.stop());
+      resetScanBtn(); return;
+    }
+    stream = s;
     setupVideo(stream);
 
     const reader = new BrowserMultiFormatReader();
@@ -168,9 +183,17 @@ function handleMiss() {
 
 export function stopScan() {
   scanning = false;
+  // Stop ZXing continuous decoder if active
   if (zxingControls) { zxingControls.stop(); zxingControls = null; }
-  if (stream)        { stream.getTracks().forEach(t => t.stop()); stream = null; }
+  // Stop every camera track so the device camera light turns off
+  if (stream) { stream.getTracks().forEach(t => t.stop()); stream = null; }
+  // Clearing srcObject and pausing releases the camera fully.
+  // Without this the browser keeps the camera initialised even after
+  // the tracks are stopped and the video shows a frozen frame.
+  const video = document.getElementById('video');
+  if (video) { video.pause(); video.srcObject = null; }
   document.getElementById('video-wrap').style.display = 'none';
+  detector = null; // force a fresh BarcodeDetector on next scan
 }
 
 /* ---- Helpers -------------------------------------------------------------- */
