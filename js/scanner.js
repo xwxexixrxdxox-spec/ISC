@@ -1,28 +1,39 @@
 /**
  * scanner.js -- Camera scanning, product lookup, and vendor price chain.
  *
- * Vendor lookup order:
- *   1. UPCitemdb free API (offers with merchant + price)
- *   2. Open Food Facts Prices API (crowdsourced, broader coverage)
- *   3. Google Shopping fallback link (always shown)
+ * Scanning strategy (in priority order):
+ *   1. BarcodeDetector API  -- Chrome/Edge on Android and desktop (fastest)
+ *   2. ZXing-JS via esm.sh  -- iOS Safari, Firefox, Safari on Mac (JS fallback)
+ *   3. Manual entry         -- always available as a baseline
+ *
+ * ZXing is loaded dynamically via import() only when BarcodeDetector is
+ * unavailable, so iOS/Firefox users pay no cost on first load and Android
+ * users never load it at all.
  */
 
 import { $, setStatus } from './utils.js';
 
-let stream    = null;
-let scanning  = false;
-let detector  = null;
-let html5QrCode = null; // For html5-qrcode fallback
-let lastCode  = null;
-let codeCount = 0;
-let missCount = 0;
+let stream       = null;
+let scanning     = false;
+let detector     = null;  // BarcodeDetector instance (native)
+let zxingControls = null; // ZXing IScannerControls (JS fallback)
+let lastCode     = null;
+let codeCount    = 0;
+let missCount    = 0;
 const CONFIRM_READS  = 3;
 const MISS_TOLERANCE = 5;
 
+const NATIVE = 'BarcodeDetector' in window;
+
 export function initScanner() {
   document.getElementById('scanBtn')?.addEventListener('click', () => {
-    if (scanning) { stopScan(); document.getElementById('scanBtn').textContent = '[camera] Scan Barcode'; }
-    else          { startScan(); document.getElementById('scanBtn').textContent = '[stop] Stop Scanning'; }
+    if (scanning) {
+      stopScan();
+      document.getElementById('scanBtn').textContent = 'Scan Barcode';
+    } else {
+      startScan();
+      document.getElementById('scanBtn').textContent = 'Stop Scanning';
+    }
   });
 
   document.getElementById('barcode')?.addEventListener('change', () => {
@@ -36,197 +47,171 @@ export function initScanner() {
   });
 }
 
+/* ---- Start ---------------------------------------------------------------- */
+
 async function startScan() {
-  // Try to use BarcodeDetector (Chrome/Android) first
-  if ('BarcodeDetector' in window) {
-    try {
-      detector = new BarcodeDetector({ formats: ['ean_13','ean_8','upc_a','upc_e','code_128','qr_code'] });
-      stream   = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: 'environment', width: { ideal: 1280 }, height: { ideal: 720 } },
-      });
-      const video = document.getElementById('video');
-      video.srcObject = stream;
-      document.getElementById('video-wrap').style.display = 'block';
-      scanning = true;
-      lastCode = null; codeCount = 0; missCount = 0;
-      requestAnimationFrame(scanLoop);
-      return;
-    } catch (e) {
-      setStatus('cameraStatus', 'Camera failed: ' + e.message, 'err');
-      return;
-    }
-  }
-  
-  // Fallback to html5-qrcode for iOS Safari and other browsers
-  try {
-    const videoContainer = document.getElementById('video-wrap');
-    videoContainer.style.display = 'block';
-    scanning = true;
-    lastCode = null; codeCount = 0; missCount = 0;
-    
-    // Create a unique container ID for html5-qrcode to avoid conflicts
-    const containerId = `html5-qrcode-${Date.now()}`;
-    const videoElement = document.getElementById('video');
-    
-    // Wrap the video element in a container for html5-qrcode
-    const wrapper = document.createElement('div');
-    wrapper.id = containerId;
-    wrapper.style.width = '100%';
-    wrapper.style.maxWidth = '400px';
-    wrapper.style.margin = '0 auto';
-    
-    // Replace the video element with the wrapper
-    videoElement.parentNode.replaceChild(wrapper, videoElement);
-    wrapper.appendChild(videoElement);
-    
-    // Try to find the html5-qrcode constructor using various possible names
-    let Html5QrcodeClass = null;
-    const possibleNames = [
-        'Html5Qrcode',    // Standard casing
-        'Html5QRcode',    // Alternative casing
-        'html5Qrcode',    // Lowercase first letter
-        'html5qrCode',    // Mixed casing
-        'HTML5QRCODER',   // All caps
-        'html5qrcode'     // All lowercase
-    ];
-    
-    for (const name of possibleNames) {
-        if (window[name] && typeof window[name] === 'function') {
-            Html5QrcodeClass = window[name];
-            break;
-        }
-    }
-    
-    // Fallback: check if it's on window but with wrong casing we can detect
-    if (!Html5QrcodeClass) {
-        // Look for any property that contains 'html5' and 'qrcode' in its name (case-insensitive)
-        const matches = Object.keys(window).filter(key => 
-            typeof window[key] === 'function' && 
-            key.toLowerCase().includes('html5') && 
-            key.toLowerCase().includes('qrcode')
-        );
-        if (matches.length > 0) {
-            // Use the first match
-            Html5QrcodeClass = window[matches[0]];
-        }
-    }
-    
-    if (!Html5QrcodeClass) {
-        // Debug: show what's available on window
-        const html5Keys = Object.keys(window).filter(k => 
-            k.toLowerCase().includes('html5') || k.toLowerCase().includes('qrcode')
-        );
-        throw new Error('html5-qrcode library failed to load. Related window properties: ' + 
-                       (html5Keys.length > 0 ? html5Keys.join(', ') : 'none found'));
-    }
-    // Additional check: ensure it's a function (constructor)
-    if (typeof Html5QrcodeClass !== 'function') {
-        throw new Error('html5-qrcode is not a constructor: ' + typeof Html5QrcodeClass);
-    }
-    let html5QrCodeInstance = null;
-    try {
-        html5QrCodeInstance = new Html5QrcodeClass(containerId);
-    } catch (instantiationError) {
-        throw new Error('Failed to instantiate html5-qrcode: ' + instantiationError.message);
-    }
-    html5QrCode = html5QrCodeInstance;
-    const config = { fps: 10, qrbox: { width: 250, height: 250 } };
-    
-    await html5QrCode.start(
-      { facingMode: "environment" },
-      config,
-      (decodedText, decodedResult) => {
-        // Handle successful scan
-        if (decodedText && decodedText !== lastCode) {
-          lastCode = decodedText;
-          codeCount++;
-          
-          // Require multiple consecutive reads for confirmation
-          if (codeCount >= CONFIRM_READS) {
-            lastCode = null;
-            codeCount = 0;
-            stopScan();
-            document.getElementById('scanBtn').textContent = '[camera] Scan Barcode';
-            document.getElementById('barcode').value = decodedText;
-            setStatus('cameraStatus', `Scanned: ${decodedText} -- looking up...`, 'info');
-            lookupBarcode(decodedText);
-          } else {
-            setStatus('cameraStatus', `Hold steady... ${Math.round((codeCount / CONFIRM_READS) * 100)}%`, 'info');
-          }
-        }
-      },
-      (errorMessage) => {
-        // Handle scan error (continuously called, so we ignore minor errors)
-        // Only show persistent errors
-        if (errorMessage.includes("Cannot read properties") || errorMessage.includes("NotFoundError")) {
-          console.error('QR Code error:', errorMessage);
-        }
-      }
-    );
-    
-    setStatus('cameraStatus', 'Scanner initialized. Point camera at barcode.', 'info');
-  } catch (e) {
-    setStatus('cameraStatus', 'Failed to initialize scanner: ' + e.message, 'err');
-    scanning = false;
-    // Restore video element if wrapper creation failed
-    const wrapper = document.querySelector('[id^="html5-qrcode-"]');
-    if (wrapper && wrapper.parentNode) {
-      const videoElement = wrapper.querySelector('video');
-      if (videoElement) {
-        wrapper.parentNode.replaceChild(videoElement, wrapper);
-      }
-    }
+  if (NATIVE) {
+    await startNativeScanner();
+  } else {
+    await startZXingScanner();
   }
 }
 
-function stopScan() {
-  scanning = false;
-  if (stream) {
-    stream.getTracks().forEach(t => t.stop());
-    stream = null;
-  }
-  if (html5QrCode) {
-    html5QrCode.stop().then(() => {
-      html5QrCode = null;
-      
-      // Restore original video element structure
-      const wrapper = document.querySelector('[id^="html5-qrcode-"]');
-      if (wrapper && wrapper.parentNode) {
-        const videoElement = wrapper.querySelector('video');
-        if (videoElement) {
-          const videoWrapper = document.getElementById('video-wrap');
-          videoWrapper.innerHTML = ''; // Clear wrapper
-          videoWrapper.appendChild(videoElement); // Put video back directly
-        }
-        wrapper.remove(); // Remove wrapper
-      }
-    }).catch(err => {
-      console.error('Error stopping html5-qrcode:', err);
+/* ---- Native BarcodeDetector (Chrome / Edge) ------------------------------- */
+
+async function startNativeScanner() {
+  try {
+    detector = new BarcodeDetector({
+      formats: ['ean_13','ean_8','upc_a','upc_e','code_128','qr_code']
     });
+    stream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: 'environment', width: { ideal: 1280 }, height: { ideal: 720 } }
+    });
+    setupVideo(stream);
+    requestAnimationFrame(nativeScanLoop);
+  } catch (e) {
+    setStatus('cameraStatus', 'Camera failed: ' + e.message, 'err');
+    resetScanBtn();
   }
+}
+
+async function nativeScanLoop() {
+  if (!scanning) return;
+  const video = document.getElementById('video');
+  try {
+    const codes = await detector.detect(video);
+    if (codes.length > 0) {
+      const code = codes[0].rawValue;
+      const fmt  = codes[0].format || '';
+      const expectedLengths = { ean_13: 13, ean_8: 8, upc_a: 12, upc_e: 8 };
+      if (expectedLengths[fmt] && code.replace(/\D/g,'').length !== expectedLengths[fmt]) {
+        requestAnimationFrame(nativeScanLoop); return;
+      }
+      handleFrame(code);
+    } else {
+      handleMiss();
+    }
+  } catch (e) { /* frame decode failed -- keep looping */ }
+  if (scanning) requestAnimationFrame(nativeScanLoop);
+}
+
+/* ---- ZXing JS fallback (iOS Safari / Firefox / Safari on Mac) ------------- */
+
+async function startZXingScanner() {
+  setStatus('cameraStatus', 'Loading scanner...', 'info');
+  try {
+    // Dynamically import ZXing only when needed.
+    // esm.sh resolves all dependencies automatically -- no CDN script tag needed.
+    const { BrowserMultiFormatReader, NotFoundException } =
+      await import('https://esm.sh/@zxing/browser@0.1.5');
+
+    stream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: 'environment', width: { ideal: 1280 }, height: { ideal: 720 } }
+    });
+    setupVideo(stream);
+
+    const reader = new BrowserMultiFormatReader();
+    // decodeFromStream calls our callback on every decoded frame.
+    // NotFoundException means no barcode this frame -- normal, not an error.
+    zxingControls = await reader.decodeFromStream(stream,
+      document.getElementById('video'),
+      (result, err) => {
+        if (!scanning) return;
+        if (result) {
+          handleFrame(result.getText());
+        } else if (err && err.name !== 'NotFoundException') {
+          handleMiss();
+        } else {
+          handleMiss();
+        }
+      }
+    );
+  } catch (e) {
+    if (e.name === 'NotAllowedError') {
+      setStatus('cameraStatus', 'Camera permission denied. Allow camera access and try again.', 'err');
+    } else if (e.message && e.message.includes('import')) {
+      setStatus('cameraStatus', 'Scanner library failed to load. Check your connection, or type the barcode manually.', 'err');
+    } else {
+      setStatus('cameraStatus', 'Camera failed: ' + e.message, 'err');
+    }
+    resetScanBtn();
+  }
+}
+
+/* ---- Shared frame handling ------------------------------------------------ */
+
+function handleFrame(code) {
+  missCount = 0;
+  if (code !== lastCode) { lastCode = code; codeCount = 1; hideVendorPanel(); }
+  else codeCount++;
+
+  const pct = Math.round((codeCount / CONFIRM_READS) * 100);
+  setStatus('cameraStatus', 'Hold steady... ' + pct + '%', 'info');
+
+  if (codeCount >= CONFIRM_READS) {
+    const confirmed = code;
+    lastCode = null; codeCount = 0; missCount = 0;
+    document.getElementById('barcode').value = confirmed;
+    stopScan();
+    resetScanBtn();
+    setStatus('cameraStatus', 'Scanned: ' + confirmed + ' -- looking up...', 'info');
+    lookupBarcode(confirmed);
+  }
+}
+
+function handleMiss() {
+  missCount++;
+  if (missCount > MISS_TOLERANCE) { lastCode = null; codeCount = 0; missCount = 0; }
+}
+
+/* ---- Stop ----------------------------------------------------------------- */
+
+export function stopScan() {
+  scanning = false;
+  if (zxingControls) { zxingControls.stop(); zxingControls = null; }
+  if (stream)        { stream.getTracks().forEach(t => t.stop()); stream = null; }
   document.getElementById('video-wrap').style.display = 'none';
 }
+
+/* ---- Helpers -------------------------------------------------------------- */
+
+function setupVideo(s) {
+  const video = document.getElementById('video');
+  video.srcObject = s;
+  document.getElementById('video-wrap').style.display = 'block';
+  // iOS Safari requires an explicit play() call after setting srcObject.
+  // Without it the video element stays blank and ZXing decodes nothing.
+  video.play().catch(e => console.warn('[Scanner] video.play() failed:', e.message));
+  scanning = true;
+  lastCode = null; codeCount = 0; missCount = 0;
+  setStatus('cameraStatus', 'Point at a barcode...', 'info');
+}
+
+function resetScanBtn() {
+  const btn = document.getElementById('scanBtn');
+  if (btn) btn.textContent = 'Scan Barcode';
+}
+
+/* ---- Product lookup ------------------------------------------------------- */
 
 export async function lookupBarcode(code) {
   let found = false;
   try {
-    const res  = await fetch(`https://world.openfoodfacts.org/api/v2/product/${code}.json`);
+    const res  = await fetch('https://world.openfoodfacts.org/api/v2/product/' + code + '.json');
     const data = await res.json();
     if (data.status === 1 && data.product) {
       const p    = data.product;
       const name = p.product_name || p.generic_name || '';
       if (name) { document.getElementById('description').value = name; found = true; }
-
-      // Parse unit from quantity string e.g. "330 ml", "500g", "12 x 35g"
       if (p.quantity) {
         const m = p.quantity.match(/\b(ml|mL|L|l|g|kg|oz|lb|fl\s?oz|cl)\b/);
         if (m) {
-          const u   = m[1].replace(/\s/, '').toLowerCase();
+          const u   = m[1].replace(/\s/,'').toLowerCase();
           const sel = document.getElementById('unit');
           const opt = sel ? [...sel.options].find(o => o.value.toLowerCase() === u) : null;
           if (sel) {
-            if (opt)  { sel.value = opt.value; }
-            else      {
+            if (opt) { sel.value = opt.value; }
+            else {
               sel.value = 'custom';
               const custom = document.getElementById('unitCustom');
               if (custom) { custom.style.display = 'block'; custom.value = m[1]; }
@@ -242,13 +227,11 @@ export async function lookupBarcode(code) {
   } catch (e) {
     setStatus('cameraStatus', 'Lookup failed -- fill in details manually.', 'warn');
   }
-
-  // Trigger vendor price lookup in parallel (non-blocking)
   lookupVendorPrices(code, document.getElementById('description')?.value?.trim() || '')
     .catch(() => {});
 }
 
-/** -- Vendor Price Lookup ---------------------------------------------------- */
+/* ---- Vendor price lookup -------------------------------------------------- */
 
 export async function lookupVendorPrices(barcode, productName) {
   const panel    = document.getElementById('vendor-panel');
@@ -262,9 +245,8 @@ export async function lookupVendorPrices(barcode, productName) {
   if (status) status.textContent = '';
 
   const searchQ = encodeURIComponent(productName || barcode);
-  if (shopLink) shopLink.href = `https://www.google.com/search?tbm=shop&q=${searchQ}`;
+  if (shopLink) shopLink.href = 'https://www.google.com/search?tbm=shop&q=' + searchQ;
 
-  // Session cache -- same barcode won't burn daily API limit on re-scan
   const cacheKey = 'vp_' + barcode;
   const cached   = sessionStorage.getItem(cacheKey);
   if (cached) { renderVendorOffers(JSON.parse(cached), list, status); return; }
@@ -272,9 +254,8 @@ export async function lookupVendorPrices(barcode, productName) {
   try {
     let offers = [];
 
-    // Source 1: UPCitemdb (best merchant + price data, 100/day free)
     try {
-      const res  = await fetch(`https://api.upcitemdb.com/prod/trial/lookup?upc=${barcode}`);
+      const res  = await fetch('https://api.upcitemdb.com/prod/trial/lookup?upc=' + barcode);
       const data = await res.json();
       if (data.code === 'OK' || !data.code) {
         const item = (data.items || [])[0] || {};
@@ -290,10 +271,9 @@ export async function lookupVendorPrices(barcode, productName) {
       }
     } catch (e) { /* UPCitemdb unavailable */ }
 
-    // Source 2: Open Food Facts Prices (crowdsourced, broader coverage)
     if (offers.length === 0) {
       try {
-        const res  = await fetch(`https://prices.openfoodfacts.org/api/v1/prices?product_code=${barcode}&page_size=20`);
+        const res  = await fetch('https://prices.openfoodfacts.org/api/v1/prices?product_code=' + barcode + '&page_size=20');
         const data = await res.json();
         if (data.items?.length) {
           const byStore = {};
@@ -303,13 +283,13 @@ export async function lookupVendorPrices(barcode, productName) {
             if (p > 0 && (!byStore[key] || p < byStore[key])) byStore[key] = p;
           });
           offers = Object.entries(byStore)
-            .filter(([, p]) => p > 0)
+            .filter(([,p]) => p > 0)
             .map(([merchant, price]) => ({ merchant, price, shipping: 0, total: price, condition: 'in-store' }));
         }
       } catch (e) { /* OFF Prices unavailable */ }
     }
 
-    offers = offers.sort((a, b) => a.total - b.total).slice(0, 8);
+    offers = offers.sort((a,b) => a.total - b.total).slice(0, 8);
     sessionStorage.setItem(cacheKey, JSON.stringify(offers));
     renderVendorOffers(offers, list, status);
 
@@ -325,15 +305,15 @@ function renderVendorOffers(offers, list, status) {
   }
   list.innerHTML = offers.map((o, i) => {
     const freeShip = o.shipping === 0 ? '<span class="vendor-item-ship">free ship</span>' : '';
-    return `<div class="vendor-item${i === 0 ? ' vendor-best' : ''}"
-      onclick="selectVendorPrice(${o.price},'${o.merchant.replace(/'/g,"\\'")}')">
-      <span class="vendor-item-name">${i === 0 ? '[best] ' : ''}${o.merchant}</span>
-      <span class="vendor-item-cond">${o.condition}</span>
-      <div style="text-align:right;">
-        <span class="vendor-item-price">$${o.price.toFixed(2)}</span>${freeShip}
-      </div></div>`;
+    return '<div class="vendor-item' + (i === 0 ? ' vendor-best' : '') + '"'
+      + ' onclick="selectVendorPrice(' + o.price + ',\'' + o.merchant.replace(/'/g,"\\'") + '\')">'
+      + '<span class="vendor-item-name">' + (i === 0 ? '[best] ' : '') + o.merchant + '</span>'
+      + '<span class="vendor-item-cond">' + o.condition + '</span>'
+      + '<div style="text-align:right;">'
+      + '<span class="vendor-item-price">$' + o.price.toFixed(2) + '</span>' + freeShip
+      + '</div></div>';
   }).join('');
-  if (status) status.textContent = offers.length + ' vendor' + (offers.length !== 1 ? 's' : '') + ' found . cheapest first';
+  if (status) status.textContent = offers.length + ' vendor' + (offers.length !== 1 ? 's' : '') + ' found - cheapest first';
 }
 
 export function selectVendorPrice(price, merchant) {
@@ -348,43 +328,4 @@ export function hideVendorPanel() {
   if (panel) panel.style.display = 'none';
   const list = document.getElementById('vendor-list');
   if (list) list.innerHTML = '';
-}
-
-// Keep the original scanLoop for BarcodeDetector path
-async function scanLoop() {
-  if (!scanning) return;
-  const video = document.getElementById('video');
-  try {
-    const codes = await detector.detect(video);
-    if (codes.length > 0) {
-      const code = codes[0].rawValue;
-      const fmt  = codes[0].format || '';
-
-      // Reject codes whose digit count doesn't match the declared format
-      const expectedLengths = { ean_13: 13, ean_8: 8, upc_a: 12, upc_e: 8 };
-      if (expectedLengths[fmt] && code.replace(/\D/g, '').length !== expectedLengths[fmt]) {
-        requestAnimationFrame(scanLoop); return;
-      }
-
-      missCount = 0;
-      if (code !== lastCode) { lastCode = code; codeCount = 1; hideVendorPanel(); }
-      else codeCount++;
-
-      setStatus('cameraStatus', `Hold steady... ${Math.round((codeCount / CONFIRM_READS) * 100)}%`, 'info');
-
-      if (codeCount >= CONFIRM_READS) {
-        lastCode = null; codeCount = 0; missCount = 0;
-        document.getElementById('barcode').value = code;
-        stopScan();
-        document.getElementById('scanBtn').textContent = '[camera] Scan Barcode';
-        setStatus('cameraStatus', `Scanned: ${code} (${fmt || 'barcode'}) -- looking up...`, 'info');
-        lookupBarcode(code);
-        return;
-      }
-    } else {
-      missCount++;
-      if (missCount > MISS_TOLERANCE) { lastCode = null; codeCount = 0; missCount = 0; }
-    }
-  } catch (e) { /* frame decode failed -- keep looping */ }
-  requestAnimationFrame(scanLoop);
 }
