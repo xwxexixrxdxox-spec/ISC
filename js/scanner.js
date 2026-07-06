@@ -79,11 +79,57 @@ async function startScan() {
     videoElement.parentNode.replaceChild(wrapper, videoElement);
     wrapper.appendChild(videoElement);
     
-    html5QrCode = new window.Html5Qrcode(containerId);
-    // Fallback check for library loading
-    if (!window.Html5Qrcode) {
-        throw new Error('html5-qrcode library failed to load');
+    // Try to find the html5-qrcode constructor using various possible names
+    let Html5QrcodeClass = null;
+    const possibleNames = [
+        'Html5Qrcode',    // Standard casing
+        'Html5QRcode',    // Alternative casing
+        'html5Qrcode',    // Lowercase first letter
+        'html5qrCode',    // Mixed casing
+        'HTML5QRCODER',   // All caps
+        'html5qrcode'     // All lowercase
+    ];
+    
+    for (const name of possibleNames) {
+        if (window[name] && typeof window[name] === 'function') {
+            Html5QrcodeClass = window[name];
+            break;
+        }
     }
+    
+    // Fallback: check if it's on window but with wrong casing we can detect
+    if (!Html5QrcodeClass) {
+        // Look for any property that contains 'html5' and 'qrcode' in its name (case-insensitive)
+        const matches = Object.keys(window).filter(key => 
+            typeof window[key] === 'function' && 
+            key.toLowerCase().includes('html5') && 
+            key.toLowerCase().includes('qrcode')
+        );
+        if (matches.length > 0) {
+            // Use the first match
+            Html5QrcodeClass = window[matches[0]];
+        }
+    }
+    
+    if (!Html5QrcodeClass) {
+        // Debug: show what's available on window
+        const html5Keys = Object.keys(window).filter(k => 
+            k.toLowerCase().includes('html5') || k.toLowerCase().includes('qrcode')
+        );
+        throw new Error('html5-qrcode library failed to load. Related window properties: ' + 
+                       (html5Keys.length > 0 ? html5Keys.join(', ') : 'none found'));
+    }
+    // Additional check: ensure it's a function (constructor)
+    if (typeof Html5QrcodeClass !== 'function') {
+        throw new Error('html5-qrcode is not a constructor: ' + typeof Html5QrcodeClass);
+    }
+    let html5QrCodeInstance = null;
+    try {
+        html5QrCodeInstance = new Html5QrcodeClass(containerId);
+    } catch (instantiationError) {
+        throw new Error('Failed to instantiate html5-qrcode: ' + instantiationError.message);
+    }
+    html5QrCode = html5QrCodeInstance;
     const config = { fps: 10, qrbox: { width: 250, height: 250 } };
     
     await html5QrCode.start(
