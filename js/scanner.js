@@ -112,31 +112,43 @@ async function nativeScanLoop() {
 // the video element's srcObject and play() calls.
 
 async function startZXingScanner() {
-  setStatus('cameraStatus', 'Loading scanner for your browser...', 'info');
+  // Step-by-step status messages so any failure point is visible on screen.
+  // This is especially important for diagnosing iOS Safari issues remotely.
+  setStatus('cameraStatus', 'Step 1/3: Loading scanner library...', 'info');
   try {
-    // @zxing/browser@0.1.4 -- well-tested version, handles image processing internally.
-    // We use decodeFromCanvas (single-frame, no video element conflicts) inside
-    // our own requestAnimationFrame loop (no decodeFromStream iOS conflicts).
     if (!zxingModule) {
-      zxingModule = await import('https://esm.sh/@zxing/browser@0.1.4');
+      // Try jsDelivr first (better iOS Safari compatibility than esm.sh),
+      // fall back to esm.sh if jsDelivr fails.
+      try {
+        zxingModule = await import('https://cdn.jsdelivr.net/npm/@zxing/browser@0.1.4/+esm');
+      } catch (importErr) {
+        console.warn('[Scanner] jsDelivr failed, trying esm.sh:', importErr.message);
+        zxingModule = await import('https://esm.sh/@zxing/browser@0.1.4');
+      }
     }
 
+    // Confirm the module loaded correctly
+    if (!zxingModule || !zxingModule.BrowserMultiFormatReader) {
+      throw new Error('Scanner library loaded but BrowserMultiFormatReader not found');
+    }
+
+    setStatus('cameraStatus', 'Step 2/3: Requesting camera access...', 'info');
     const s = await navigator.mediaDevices.getUserMedia({
       video: { facingMode: 'environment', width: { ideal: 1280 }, height: { ideal: 720 } }
     });
-    // Guard: user tapped Stop while getUserMedia was awaiting
+
     if (!scanning && stream === null) {
       s.getTracks().forEach(t => t.stop());
       resetScanBtn(); return;
     }
     stream = s;
-    setupVideo(stream); // handles srcObject, play(), and status message
+
+    setStatus('cameraStatus', 'Step 3/3: Starting camera...', 'info');
+    setupVideo(stream);
 
     const reader    = new zxingModule.BrowserMultiFormatReader();
     const offscreen = document.createElement('canvas');
 
-    // Frame loop using decodeFromCanvas -- single frame decode, no video conflicts.
-    // Skips frames where the video isn't ready yet (common on iOS after play()).
     function zxingLoop() {
       if (!scanning) return;
       const video = document.getElementById('video');
@@ -150,7 +162,6 @@ async function startZXingScanner() {
         const result = reader.decodeFromCanvas(offscreen);
         handleFrame(result.getText());
       } catch (e) {
-        // NotFoundException on every frame with no barcode -- expected and normal
         handleMiss();
       }
       if (scanning) requestAnimationFrame(zxingLoop);
@@ -160,11 +171,12 @@ async function startZXingScanner() {
     requestAnimationFrame(zxingLoop);
 
   } catch (e) {
-    if (e.name === 'NotAllowedError') {
-      setStatus('cameraStatus', 'Camera permission denied. Allow camera access in your browser settings and try again.', 'err');
-    } else {
-      setStatus('cameraStatus', 'Scanner failed: ' + (e.message || 'unknown error') + '. You can type barcodes manually below.', 'err');
-    }
+    const msg = e.name === 'NotAllowedError'
+      ? 'Camera permission denied. In Safari: Settings > Safari > Camera > Allow.'
+      : 'Error at: ' + (document.getElementById('cameraStatus')?.textContent || '?')
+        + ' -- ' + (e.name || '') + ': ' + (e.message || 'unknown');
+    setStatus('cameraStatus', msg, 'err');
+    zxingModule = null; // reset so next attempt retries the import
     resetScanBtn();
   }
 }
