@@ -16,6 +16,7 @@ import { $, setStatus } from './utils.js';
 let stream       = null;
 let scanning     = false;
 let detector     = null;  // BarcodeDetector instance (native)
+let zxingModule  = null;  // ZXing module (lazy-loaded for non-Chrome browsers)
 let zxingControls = null; // ZXing IScannerControls (JS fallback)
 let lastCode     = null;
 let codeCount    = 0;
