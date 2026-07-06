@@ -105,49 +105,66 @@ async function nativeScanLoop() {
 }
 
 /* ---- ZXing JS fallback (iOS Safari / Firefox / Safari on Mac) ------------- */
+// Uses @zxing/library (core decoder) via esm.sh CDN.
+// Runs our own requestAnimationFrame loop -- avoids iOS conflicts from
+// @zxing/browser's decodeFromStream which fights with our setupVideo over
+// the video element's srcObject and play() calls.
 
 async function startZXingScanner() {
-  setStatus('cameraStatus', 'Loading scanner...', 'info');
+  setStatus('cameraStatus', 'Loading scanner for your browser...', 'info');
   try {
-    // Dynamically import ZXing only when needed.
-    // esm.sh resolves all dependencies automatically -- no CDN script tag needed.
-    const { BrowserMultiFormatReader, NotFoundException } =
-      await import('https://esm.sh/@zxing/browser@0.1.5');
+    // Load only when needed -- cached in zxingModule after first use
+    if (!zxingModule) {
+      zxingModule = await import('https://esm.sh/@zxing/library@0.20.0');
+    }
 
     const s = await navigator.mediaDevices.getUserMedia({
       video: { facingMode: 'environment', width: { ideal: 1280 }, height: { ideal: 720 } }
     });
-    // Guard: user may have tapped Stop while getUserMedia was awaiting
+    // Guard: user tapped Stop while getUserMedia was awaiting
     if (!scanning && stream === null) {
       s.getTracks().forEach(t => t.stop());
       resetScanBtn(); return;
     }
     stream = s;
-    setupVideo(stream);
+    setupVideo(stream); // handles srcObject, play(), and status message
 
-    const reader = new BrowserMultiFormatReader();
-    // decodeFromStream calls our callback on every decoded frame.
-    // NotFoundException means no barcode this frame -- normal, not an error.
-    zxingControls = await reader.decodeFromStream(stream,
-      document.getElementById('video'),
-      (result, err) => {
-        if (!scanning) return;
-        if (result) {
-          handleFrame(result.getText());
-        } else if (err && err.name !== 'NotFoundException') {
-          handleMiss();
-        } else {
-          handleMiss();
-        }
+    // Build ZXing decoder and a reusable offscreen canvas
+    const zxReader  = new zxingModule.MultiFormatReader();
+    const offscreen = document.createElement('canvas');
+
+    // Frame loop -- identical architecture to the native BarcodeDetector loop
+    function zxingLoop() {
+      if (!scanning) return;
+      const video = document.getElementById('video');
+      // Wait until video dimensions are available (iOS needs a moment after play())
+      if (!video || !video.videoWidth || !video.videoHeight) {
+        requestAnimationFrame(zxingLoop); return;
       }
-    );
+      try {
+        offscreen.width  = video.videoWidth;
+        offscreen.height = video.videoHeight;
+        const ctx = offscreen.getContext('2d', { willReadFrequently: true });
+        ctx.drawImage(video, 0, 0);
+        const img = ctx.getImageData(0, 0, offscreen.width, offscreen.height);
+        const lum = new zxingModule.RGBLuminanceSource(img.data, offscreen.width, offscreen.height);
+        const bmp = new zxingModule.BinaryBitmap(new zxingModule.HybridBinarizer(lum));
+        handleFrame(zxReader.decode(bmp).getText());
+      } catch (e) {
+        handleMiss(); // NotFoundException = no barcode this frame, normal
+      }
+      if (scanning) requestAnimationFrame(zxingLoop);
+    }
+
+    // zxingControls.stop() is called by stopScan() -- loop exits via scanning=false
+    zxingControls = { stop: () => {} };
+    requestAnimationFrame(zxingLoop);
+
   } catch (e) {
     if (e.name === 'NotAllowedError') {
-      setStatus('cameraStatus', 'Camera permission denied. Allow camera access and try again.', 'err');
-    } else if (e.message && e.message.includes('import')) {
-      setStatus('cameraStatus', 'Scanner library failed to load. Check your connection, or type the barcode manually.', 'err');
+      setStatus('cameraStatus', 'Camera permission denied. Allow camera access in your browser settings and try again.', 'err');
     } else {
-      setStatus('cameraStatus', 'Camera failed: ' + e.message, 'err');
+      setStatus('cameraStatus', 'Scanner failed: ' + (e.message || 'unknown error') + '. You can type barcodes manually below.', 'err');
     }
     resetScanBtn();
   }
