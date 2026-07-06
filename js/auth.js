@@ -59,9 +59,11 @@ export function scheduleTokenRefresh() {
 
 function silentTokenRefresh() {
   try {
+  const hint = S.userEmail || localStorage.getItem('userEmail') || undefined;
     const client = google.accounts.oauth2.initTokenClient({
       client_id: CLIENT_ID,
       scope:     SCOPES,
+      hint,
       callback:  resp => {
         if (!resp.error) {
           S.accessToken = resp.access_token;
@@ -84,11 +86,13 @@ function silentTokenRefresh() {
  */
 export function ensureToken() {
   if (S.accessToken) return Promise.resolve();
+  const hint = S.userEmail || localStorage.getItem('userEmail') || undefined;
   return new Promise(resolve => {
     try {
       const client = google.accounts.oauth2.initTokenClient({
         client_id: CLIENT_ID,
         scope:     SCOPES,
+        hint,
         callback:  resp => {
           if (!resp.error) { S.accessToken = resp.access_token; scheduleTokenRefresh(); }
           resolve();
@@ -116,10 +120,12 @@ export function trySilentToken() {
     // silently, give up and show the welcome screen rather than hanging.
     const timeout = setTimeout(() => resolve(false), 4000);
 
+    const hint = S.userEmail || localStorage.getItem('userEmail') || undefined;
     try {
       const client = google.accounts.oauth2.initTokenClient({
         client_id: CLIENT_ID,
-        scope: SCOPES,
+        scope:     SCOPES,
+        hint,
         callback: resp => {
           clearTimeout(timeout);
           if (!resp.error && resp.access_token) {
