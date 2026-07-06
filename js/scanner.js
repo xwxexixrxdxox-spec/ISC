@@ -79,7 +79,11 @@ async function startScan() {
     videoElement.parentNode.replaceChild(wrapper, videoElement);
     wrapper.appendChild(videoElement);
     
-    html5QrCode = new Html5Qrcode(containerId);
+    html5QrCode = new window.Html5Qrcode(containerId);
+    // Fallback check for library loading
+    if (!window.Html5Qrcode) {
+        throw new Error('html5-qrcode library failed to load');
+    }
     const config = { fps: 10, qrbox: { width: 250, height: 250 } };
     
     await html5QrCode.start(
