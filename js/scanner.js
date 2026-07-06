@@ -11,12 +11,14 @@
  * users never load it at all.
  */
 
-import { $, setStatus } from './utils.js';
+import { $, setStatus }      from './utils.js';
+// scanner-zxing.js is only imported when BarcodeDetector is unavailable
+let loadZXingDecoder = null; // loaded lazily below
 
 let stream       = null;
 let scanning     = false;
 let detector     = null;  // BarcodeDetector instance (native)
-let zxingModule  = null;  // ZXing module (lazy-loaded for non-Chrome browsers)
+
 let zxingControls = null; // ZXing IScannerControls (JS fallback)
 let lastCode     = null;
 let codeCount    = 0;
@@ -106,33 +108,24 @@ async function nativeScanLoop() {
 }
 
 /* ---- ZXing JS fallback (iOS Safari / Firefox / Safari on Mac) ------------- */
-// Uses @zxing/library (core decoder) via esm.sh CDN.
-// Runs our own requestAnimationFrame loop -- avoids iOS conflicts from
-// @zxing/browser's decodeFromStream which fights with our setupVideo over
-// the video element's srcObject and play() calls.
+// All CDN loading and ZXing initialisation lives in scanner-zxing.js.
+// That file is only imported here, and only when BarcodeDetector is absent,
+// so Android/Chrome users never download any ZXing code.
 
 async function startZXingScanner() {
-  // Step-by-step status messages so any failure point is visible on screen.
-  // This is especially important for diagnosing iOS Safari issues remotely.
-  setStatus('cameraStatus', 'Step 1/3: Loading scanner library...', 'info');
   try {
-    if (!zxingModule) {
-      // Try jsDelivr first (better iOS Safari compatibility than esm.sh),
-      // fall back to esm.sh if jsDelivr fails.
-      try {
-        zxingModule = await import('https://cdn.jsdelivr.net/npm/@zxing/browser@0.1.4/+esm');
-      } catch (importErr) {
-        console.warn('[Scanner] jsDelivr failed, trying esm.sh:', importErr.message);
-        zxingModule = await import('https://esm.sh/@zxing/browser@0.1.4');
-      }
+    // Lazy-load scanner-zxing.js the first time this path is needed
+    if (!loadZXingDecoder) {
+      const mod = await import('./scanner-zxing.js');
+      loadZXingDecoder = mod.loadZXingDecoder;
     }
 
-    // Confirm the module loaded correctly
-    if (!zxingModule || !zxingModule.BrowserMultiFormatReader) {
-      throw new Error('Scanner library loaded but BrowserMultiFormatReader not found');
-    }
+    // Load the ZXing decoder (handles CDN fallback and caching internally)
+    const decoder = await loadZXingDecoder(
+      (msg, type) => setStatus('cameraStatus', msg, type)
+    );
 
-    setStatus('cameraStatus', 'Step 2/3: Requesting camera access...', 'info');
+    setStatus('cameraStatus', 'Requesting camera access (2/3)...', 'info');
     const s = await navigator.mediaDevices.getUserMedia({
       video: { facingMode: 'environment', width: { ideal: 1280 }, height: { ideal: 720 } }
     });
@@ -143,10 +136,9 @@ async function startZXingScanner() {
     }
     stream = s;
 
-    setStatus('cameraStatus', 'Step 3/3: Starting camera...', 'info');
+    setStatus('cameraStatus', 'Starting camera (3/3)...', 'info');
     setupVideo(stream);
 
-    const reader    = new zxingModule.BrowserMultiFormatReader();
     const offscreen = document.createElement('canvas');
 
     function zxingLoop() {
@@ -159,24 +151,22 @@ async function startZXingScanner() {
         offscreen.width  = video.videoWidth;
         offscreen.height = video.videoHeight;
         offscreen.getContext('2d', { willReadFrequently: true }).drawImage(video, 0, 0);
-        const result = reader.decodeFromCanvas(offscreen);
-        handleFrame(result.getText());
+        handleFrame(decoder.decode(offscreen));
       } catch (e) {
-        handleMiss();
+        handleMiss(); // NotFoundException = no barcode this frame, normal
       }
       if (scanning) requestAnimationFrame(zxingLoop);
     }
 
-    zxingControls = { stop: () => {} };
+    zxingControls = { stop: () => { decoder.reset(); } };
     requestAnimationFrame(zxingLoop);
 
   } catch (e) {
     const msg = e.name === 'NotAllowedError'
-      ? 'Camera permission denied. In Safari: Settings > Safari > Camera > Allow.'
-      : 'Error at: ' + (document.getElementById('cameraStatus')?.textContent || '?')
-        + ' -- ' + (e.name || '') + ': ' + (e.message || 'unknown');
+      ? 'Camera permission denied. In Safari go to Settings > Safari > Camera > Allow.'
+      : 'Scanner error: ' + (e.name ? e.name + ' -- ' : '') + (e.message || 'unknown error');
     setStatus('cameraStatus', msg, 'err');
-    zxingModule = null; // reset so next attempt retries the import
+    loadZXingDecoder = null; // reset so next tap retries the whole import chain
     resetScanBtn();
   }
 }
