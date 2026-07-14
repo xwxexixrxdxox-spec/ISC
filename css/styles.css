@@ -22,7 +22,7 @@ body {
   color: var(--text);
   min-height: 100vh;
   /* Reserve space for bottom nav on main screen */
-  padding: 16px 16px 80px;
+  padding: 16px 16px calc(80px + env(safe-area-inset-bottom));
 }
 
 h1 { font-size: 1.3rem; margin-bottom: 4px; }
@@ -179,8 +179,9 @@ video { width: 100%; display: block; }
 #bottom-nav {
   position: fixed;
   bottom: 0; left: 0; right: 0;
-  height: 60px;
+  height: calc(60px + env(safe-area-inset-bottom));
   background: var(--card);
+  padding-bottom: env(safe-area-inset-bottom);
   border-top: 1px solid var(--border);
   display: flex;
   z-index: 100;
@@ -254,7 +255,7 @@ video { width: 100%; display: block; }
   font-size: 0.8rem;
   font-weight: 600;
   text-align: center;
-  padding: 6px;
+  padding: calc(6px + env(safe-area-inset-top)) 6px 6px;
   z-index: 300;
   display: none;
 }
@@ -402,7 +403,7 @@ details summary { cursor: pointer; font-size: 0.85rem; color: var(--muted); user
 #error-recovery {
   position: fixed; top: 0; left: 0; right: 0;
   background: var(--red); color: white;
-  padding: 10px 14px; font-size: 0.82rem;
+  padding: calc(10px + env(safe-area-inset-top)) 14px 10px; font-size: 0.82rem;
   z-index: 500; display: none;
   line-height: 1.5;
 }
