@@ -29,7 +29,7 @@ import {
   renderShoppingList, openItemHistory,
 } from './inventory.js';
 import { showUndoToast, initUndo }    from './undo.js';
-import { initInstallBanner, registerServiceWorker } from './pwa.js';
+import { initInstallBanner, initIOSInstallHint, registerServiceWorker } from './pwa.js';
 
 /* --- Error Boundary -------------------------------------------------------- */
 window.addEventListener('error', e => {
@@ -209,6 +209,23 @@ export function initMain() {
     el.addEventListener('click', e => { e.preventDefault(); if (S.sheetUrl) window.open(S.sheetUrl, '_blank', 'noopener'); });
   });
 
+  document.getElementById('clearCacheBtn')?.addEventListener('click', async () => {
+    if (!confirm('Clear app cache and reload?\n\nThis fixes camera issues and stale data. You will stay signed in.')) return;
+    // Unregister all service workers
+    if ('serviceWorker' in navigator) {
+      const regs = await navigator.serviceWorker.getRegistrations();
+      await Promise.all(regs.map(r => r.unregister()));
+    }
+    // Delete all caches
+    if ('caches' in window) {
+      const keys = await caches.keys();
+      await Promise.all(keys.map(k => caches.delete(k)));
+    }
+    // Reset ZXing module so it re-downloads fresh
+    sessionStorage.clear();
+    location.reload(true);
+  });
+
   document.getElementById('signOutBtn')?.addEventListener('click', () => {
     if (confirm('Sign out?\n\nYour sheet stays connected -- signing back in will reconnect to it automatically.')) {
       // Revoke the OAuth token with Google so permissions are fully cleared
@@ -263,6 +280,7 @@ export function initMain() {
   scheduleTokenRefresh();
   initUndo();
   initInstallBanner();
+  initIOSInstallHint();
   initScanner();
   initInventory();
 
@@ -395,6 +413,14 @@ document.getElementById('subBtn')?.addEventListener('click', () => submitChange(
 /* --- Expose globals for inline onclick attributes in dynamic HTML ---------
    ES modules are scoped -- functions used in onclick="..." strings on
    dynamically generated rows must be attached to window explicitly.       */
+// Apply a web search result as the item description
+function applyWebResult(title) {
+  const desc = document.getElementById('description');
+  if (desc) { desc.value = title; desc.dispatchEvent(new Event('input')); }
+  document.querySelector('.modal-backdrop')?.remove();
+  setStatus('cameraStatus', 'Description set from web search -- review and save.', 'ok');
+}
+
 Object.assign(window, {
   dismissSharedHint,
   openMinQtyModal,
@@ -404,6 +430,7 @@ Object.assign(window, {
   saveEditedItem,
   selectVendorPrice,
   openItemHistory,
+  applyWebResult,
 });
 
 /* --- Self-Healing Service Worker ------------------------------------------ */
